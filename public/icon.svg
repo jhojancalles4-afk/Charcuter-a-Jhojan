@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="grad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#10b981" />
+      <stop offset="100%" stop-color="#f43f5e" />
+    </linearGradient>
+    <linearGradient id="gold" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#fbbf24" />
+      <stop offset="100%" stop-color="#f59e0b" />
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="110" fill="#0f172a" />
+  <circle cx="256" cy="256" r="210" fill="none" stroke="url(#grad)" stroke-width="20" stroke-dasharray="16 10" />
+  <circle cx="256" cy="256" r="185" fill="#1e293b" />
+  
+  <!-- Stylized Scale & Jhojan "J" Logo -->
+  <path d="M 230 160 L 320 160 M 275 160 L 275 310 C 275 350 215 355 200 320" 
+        fill="none" stroke="#34d399" stroke-width="28" stroke-linecap="round" stroke-linejoin="round" />
+  <!-- Scale balance beam -->
+  <line x1="160" y1="210" x2="350" y2="210" stroke="#94a3b8" stroke-width="12" stroke-linecap="round" />
+  <circle cx="255" cy="210" r="10" fill="#38bdf8" />
+  <!-- Pans -->
+  <path d="M 140 245 L 180 245 C 180 260 140 260 140 245 Z" fill="#64748b" />
+  <line x1="160" y1="210" x2="160" y2="245" stroke="#64748b" stroke-width="4" />
+  <path d="M 330 245 L 370 245 C 370 260 330 260 330 245 Z" fill="#64748b" />
+  <line x1="350" y1="210" x2="350" y2="245" stroke="#64748b" stroke-width="4" />
+
+  <!-- Meat / Charcuterie Accent badge -->
+  <circle cx="360" cy="160" r="28" fill="url(#gold)" />
+  <text x="360" y="169" font-family="system-ui, sans-serif" font-size="24" font-weight="900" fill="#0f172a" text-anchor="middle">KG</text>
+</svg>
