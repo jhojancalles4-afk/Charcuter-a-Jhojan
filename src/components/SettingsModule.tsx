@@ -19,6 +19,7 @@ import {
   ShieldCheck,
   Mail,
   Send,
+  HardDrive,
 } from 'lucide-react';
 import { AppSettings } from '../types';
 import { VENEZUELAN_BANKS } from '../data/initialData';
@@ -37,16 +38,12 @@ import { CameraScannerModal } from './CameraScannerModal';
 interface SettingsModuleProps {
   settings: AppSettings;
   onSaveSettings: (newSettings: AppSettings) => void;
-  onManualSync: () => void;
-  isSyncing: boolean;
   onOpenGoogleBackup?: () => void;
 }
 
 export const SettingsModule: React.FC<SettingsModuleProps> = ({
   settings,
   onSaveSettings,
-  onManualSync,
-  isSyncing,
   onOpenGoogleBackup,
 }) => {
   // Local form state
@@ -66,6 +63,7 @@ export const SettingsModule: React.FC<SettingsModuleProps> = ({
   const [pagoMovilCedula, setPagoMovilCedula] = useState(settings.pagoMovil.cedula);
 
   const [savedSuccess, setSavedSuccess] = useState(false);
+  const [formError, setFormError] = useState<string | null>(null);
   const [importMessage, setImportMessage] = useState<string | null>(null);
 
   // Camera test modal state
@@ -79,9 +77,10 @@ export const SettingsModule: React.FC<SettingsModuleProps> = ({
 
   const handleFormSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    setFormError(null);
     const parsedBcv = parseFloat(bcvRate.replace(',', '.'));
     if (isNaN(parsedBcv) || parsedBcv <= 0) {
-      alert('Por favor introduce una tasa BCV válida mayor a cero.');
+      setFormError('Por favor introduce una tasa BCV válida mayor a cero.');
       return;
     }
 
@@ -165,6 +164,13 @@ export const SettingsModule: React.FC<SettingsModuleProps> = ({
             <div className="flex items-center gap-1.5 px-3 py-1 rounded-lg bg-emerald-950/80 border border-emerald-800 text-emerald-400 text-xs font-semibold animate-in fade-in">
               <CheckCircle2 className="w-4 h-4" />
               <span>¡Guardado con éxito!</span>
+            </div>
+          )}
+
+          {formError && (
+            <div className="flex items-center gap-1.5 px-3 py-1 rounded-lg bg-rose-950/80 border border-rose-800 text-rose-400 text-xs font-semibold animate-in fade-in">
+              <AlertCircle className="w-4 h-4" />
+              <span>{formError}</span>
             </div>
           )}
         </div>
@@ -476,15 +482,15 @@ export const SettingsModule: React.FC<SettingsModuleProps> = ({
         </div>
       </form>
 
-      {/* 4. Persistence, Backup & Cloud Sync Hub */}
+      {/* 4. Local Storage & Backups Hub */}
       <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-lg space-y-4">
         <div>
           <h3 className="text-sm sm:text-base font-bold text-slate-100 flex items-center gap-2">
-            <Cloud className="w-4 h-4 text-emerald-400" />
-            <span>Persistencia Offline, Respaldo y Sincronización</span>
+            <HardDrive className="w-4 h-4 text-emerald-400" />
+            <span>Almacenamiento Local y Centro de Respaldos</span>
           </h3>
           <p className="text-xs text-slate-400">
-            Toda la información se almacena 100% en este dispositivo (funciona sin conexión). Puedes exportar copias de seguridad o sincronizar con otros equipos.
+            Toda la información se almacena 100% de forma local y privada en este dispositivo (sin servidores externos ni intermediarios). Realiza copias de seguridad descargables con Google Drive y Telegram para proteger tus datos.
           </p>
         </div>
 
@@ -503,14 +509,14 @@ export const SettingsModule: React.FC<SettingsModuleProps> = ({
             <div>
               <div className="flex items-center gap-2">
                 <span className="font-bold text-sm text-slate-100">
-                  Copias de Seguridad Diarias con Google
+                  Centro de Respaldos: Google Drive y Telegram
                 </span>
-                <span className="text-[10px] px-2 py-0.5 rounded bg-emerald-950 text-emerald-400 border border-emerald-800 font-mono font-bold">
-                  Automático
+                <span className="text-[10px] px-2 py-0.5 rounded bg-sky-950 text-sky-400 border border-sky-800 font-mono font-bold">
+                  Oficial
                 </span>
               </div>
               <p className="text-xs text-slate-300 mt-0.5">
-                Respaldado diario automático bajo tu correo de Google. Para abrir en otro teléfono, inicias sesión con tu correo y todo se restaura idéntico sin perder nada.
+                Respalda y restaura de forma segura tus facturas, fiados, reposiciones e inventario mediante Google Drive (archivos .json) y Telegram (mensajes y códigos directos).
               </p>
             </div>
           </div>
@@ -519,10 +525,10 @@ export const SettingsModule: React.FC<SettingsModuleProps> = ({
             <button
               type="button"
               onClick={onOpenGoogleBackup}
-              className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 text-white font-bold text-xs flex items-center justify-center gap-2 transition shadow-md shadow-emerald-950/40 cursor-pointer shrink-0"
+              className="px-4 py-2 rounded-xl bg-sky-600 hover:bg-sky-500 active:bg-sky-700 text-white font-bold text-xs flex items-center justify-center gap-2 transition shadow-md shadow-sky-950/40 cursor-pointer shrink-0"
             >
               <ShieldCheck className="w-4 h-4" />
-              <span>Gestionar Copias en Google</span>
+              <span>Abrir Centro de Respaldos</span>
             </button>
           )}
         </div>
@@ -550,26 +556,21 @@ export const SettingsModule: React.FC<SettingsModuleProps> = ({
             </button>
           </div>
 
-          {/* Cloud Sync Simulator / Trigger */}
+          {/* Local Storage Card */}
           <div className="p-3.5 rounded-xl bg-slate-950 border border-slate-800 flex flex-col justify-between">
             <div>
               <div className="flex items-center gap-2 mb-1">
-                <Cloud className="w-4 h-4 text-emerald-400" />
-                <span className="font-bold text-xs text-slate-100">Sincronización Nube</span>
+                <HardDrive className="w-4 h-4 text-emerald-400" />
+                <span className="font-bold text-xs text-slate-100">Almacenamiento Local</span>
               </div>
               <p className="text-[11px] text-slate-400 leading-relaxed">
-                Sincroniza compras, abonos y catálogo para mantener actualizados otros teléfonos o tabletas.
+                Tus datos se guardan de forma privada en la memoria de este dispositivo (100% Offline).
               </p>
             </div>
-            <button
-              type="button"
-              onClick={onManualSync}
-              disabled={isSyncing}
-              className="mt-3 w-full py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold flex items-center justify-center gap-1.5 transition cursor-pointer"
-            >
-              <Cloud className={`w-3.5 h-3.5 ${isSyncing ? 'animate-spin text-rose-400' : ''}`} />
-              <span>{isSyncing ? 'Sincronizando...' : 'Sincronizar Ahora'}</span>
-            </button>
+            <div className="mt-3 w-full py-2 px-3 rounded-xl bg-slate-900 border border-emerald-800/40 text-emerald-400 text-xs font-semibold flex items-center justify-center gap-1.5">
+              <CheckCircle2 className="w-3.5 h-3.5" />
+              <span>Guardado en Equipo</span>
+            </div>
           </div>
 
           {/* Export Database Backup */}

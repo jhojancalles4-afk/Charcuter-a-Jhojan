@@ -10,8 +10,6 @@ import {
   loadExpenses,
   saveExpenses,
   getDebtorsSummary,
-  getLinkedGoogleAccount,
-  checkAndRunAutoDailyBackup,
 } from './services/storage';
 import {
   loadFidelisProfiles,
@@ -42,31 +40,25 @@ export default function App() {
   const [fidelisProfiles, setFidelisProfiles] = useState<Record<string, FidelisCustomerProfile>>(() =>
     loadFidelisProfiles()
   );
-  const [googleAccount, setGoogleAccount] = useState(() => getLinkedGoogleAccount());
   const [isGoogleBackupModalOpen, setIsGoogleBackupModalOpen] = useState(false);
   const [isGlobalFidelisOpen, setIsGlobalFidelisOpen] = useState(false);
-  const [isSyncing, setIsSyncing] = useState(false);
+  const [inventorySearchQuery, setInventorySearchQuery] = useState<string>('');
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
-  // Sync across tabs or storage events and trigger auto daily backup
+  // Sync across tabs or storage events
   useEffect(() => {
-    // Check and create today's Google daily backup snapshot if not yet created
-    checkAndRunAutoDailyBackup();
-
     const handleStorageSync = (e: any) => {
       if (e.detail?.type === 'products') setProducts(loadProducts());
       if (e.detail?.type === 'tickets') setTickets(loadTickets());
       if (e.detail?.type === 'expenses') setExpenses(loadExpenses());
       if (e.detail?.type === 'settings') setSettings(loadSettings());
       if (e.detail?.type === 'fidelis') setFidelisProfiles(loadFidelisProfiles());
-      if (e.detail?.type === 'google_account') setGoogleAccount(getLinkedGoogleAccount());
       if (e.detail?.type === 'all') {
         setProducts(loadProducts());
         setTickets(loadTickets());
         setExpenses(loadExpenses());
         setSettings(loadSettings());
         setFidelisProfiles(loadFidelisProfiles());
-        setGoogleAccount(getLinkedGoogleAccount());
       }
     };
 
@@ -281,19 +273,12 @@ export default function App() {
     [tickets, fidelisProfiles]
   );
 
-  // Manual cloud synchronization simulator
-  const handleManualSync = () => {
-    setIsSyncing(true);
-    setTimeout(() => {
-      setIsSyncing(false);
-      const now = new Date().toISOString();
-      setSettings((prev) => {
-        const upd = { ...prev, lastCloudSync: now };
-        saveSettings(upd);
-        return upd;
-      });
-      showToast('¡Datos sincronizados con la nube exitosamente!');
-    }, 1200);
+  // Navigate directly to Inventory (e.g. when product is out of stock in POS)
+  const handleNavigateToInventory = (product?: Product) => {
+    if (product) {
+      setInventorySearchQuery(product.name);
+    }
+    setActiveTab('inventory');
   };
 
   const showToast = (msg: string) => {
@@ -321,11 +306,8 @@ export default function App() {
         debtorsCount={debtorsSummary.length}
         totalTicketsCount={tickets.length}
         totalDebtUSD={totalDebtUSD}
-        onSync={handleManualSync}
-        isSyncing={isSyncing}
         fidelisRewardsReadyCount={fidelisRewardsReadyCount}
         onOpenFidelis={() => setIsGlobalFidelisOpen(true)}
-        googleEmail={googleAccount.email}
         onOpenGoogleBackup={() => setIsGoogleBackupModalOpen(true)}
       />
 
@@ -339,6 +321,7 @@ export default function App() {
             existingCustomers={existingCustomers}
             fidelisProfiles={fidelisProfiles}
             onClaimFidelisReward={handleClaimFidelisReward}
+            onNavigateToInventory={handleNavigateToInventory}
           />
         )}
 
@@ -370,6 +353,7 @@ export default function App() {
             products={products}
             settings={settings}
             onUpdateProducts={handleUpdateProducts}
+            initialSearchQuery={inventorySearchQuery}
           />
         )}
 
@@ -377,8 +361,6 @@ export default function App() {
           <SettingsModule
             settings={settings}
             onSaveSettings={handleSaveSettings}
-            onManualSync={handleManualSync}
-            isSyncing={isSyncing}
             onOpenGoogleBackup={() => setIsGoogleBackupModalOpen(true)}
           />
         )}

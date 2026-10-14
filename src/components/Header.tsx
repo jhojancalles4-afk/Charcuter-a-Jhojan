@@ -30,10 +30,10 @@ interface HeaderProps {
   debtorsCount: number;
   totalTicketsCount?: number;
   totalDebtUSD: number;
-  onSync: () => void;
+  onSync?: () => void;
+  isSyncing?: boolean;
   fidelisRewardsReadyCount?: number;
   onOpenFidelis?: () => void;
-  googleEmail?: string;
   onOpenGoogleBackup?: () => void;
 }
 
@@ -46,11 +46,8 @@ export const Header: React.FC<HeaderProps> = ({
   debtorsCount,
   totalTicketsCount = 0,
   totalDebtUSD,
-  onSync,
-  isSyncing,
   fidelisRewardsReadyCount = 0,
   onOpenFidelis,
-  googleEmail,
   onOpenGoogleBackup,
 }) => {
   const [isEditingRate, setIsEditingRate] = useState(false);
@@ -242,37 +239,33 @@ export const Header: React.FC<HeaderProps> = ({
               )}
             </div>
 
-            {/* Google Daily Backup Indicator & Button */}
+            {/* Unified Backup Hub Button (Google Drive & Telegram) */}
             {onOpenGoogleBackup && (
               <button
                 type="button"
                 onClick={onOpenGoogleBackup}
-                className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-slate-800/90 hover:bg-slate-800 border border-emerald-800/60 hover:border-emerald-500/60 transition shadow-xs cursor-pointer text-slate-200"
-                title="Copias de Seguridad Diarias en Google activas y vinculadas"
+                className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-slate-800/90 hover:bg-slate-800 border border-sky-800/60 hover:border-sky-500/60 transition shadow-xs cursor-pointer text-slate-200"
+                title="Centro de Respaldos: Google Drive y Telegram"
               >
-                <div className="flex items-center justify-center w-5 h-5 rounded bg-emerald-950/80 text-emerald-400 border border-emerald-800/40">
+                <div className="flex items-center justify-center w-5 h-5 rounded bg-sky-950/80 text-sky-400 border border-sky-800/40">
                   <ShieldCheck className="w-3 h-3" />
                 </div>
                 <div className="text-left hidden sm:block">
-                  <span className="text-[9px] font-medium text-emerald-400 uppercase tracking-wider block leading-tight">
-                    Google Backup
+                  <span className="text-[9px] font-medium text-sky-400 uppercase tracking-wider block leading-tight">
+                    Respaldos
                   </span>
-                  <span className="text-[10px] font-mono text-slate-300 font-semibold leading-tight block truncate max-w-[120px]">
-                    {googleEmail || 'Vinculado'}
+                  <span className="text-[10px] font-mono text-slate-300 font-semibold leading-tight block">
+                    Drive & Telegram
                   </span>
                 </div>
-                <span className="sm:hidden text-[10px] font-semibold text-emerald-300">
-                  Google
+                <span className="sm:hidden text-[10px] font-semibold text-sky-300">
+                  Respaldos
                 </span>
               </button>
             )}
 
-            {/* Offline & Sync Status */}
-            <OfflineIndicator
-              lastSync={settings.lastCloudSync}
-              onManualSync={onSync}
-              isSyncing={isSyncing}
-            />
+            {/* Local Storage & Connectivity Status */}
+            <OfflineIndicator />
 
             {/* PWA Install Button */}
             <PWAInstallButton />

@@ -34,25 +34,33 @@ interface InventoryModuleProps {
   products: Product[];
   settings: AppSettings;
   onUpdateProducts: (products: Product[]) => void;
+  initialSearchQuery?: string;
 }
 
 export const InventoryModule: React.FC<InventoryModuleProps> = ({
   products,
   settings,
   onUpdateProducts,
+  initialSearchQuery,
 }) => {
-  const [searchQuery, setSearchQuery] = useState('');
+  const [searchQuery, setSearchQuery] = useState(initialSearchQuery || '');
   const [selectedCategory, setSelectedCategory] = useState<ProductCategory | 'Todos'>('Todos');
   const [onlyLowStock, setOnlyLowStock] = useState(false);
+
+  React.useEffect(() => {
+    if (initialSearchQuery !== undefined) {
+      setSearchQuery(initialSearchQuery);
+    }
+  }, [initialSearchQuery]);
 
   // Camera scanner state
   const [isSearchScannerOpen, setIsSearchScannerOpen] = useState(false);
   const [isFormScannerOpen, setIsFormScannerOpen] = useState(false);
 
-  // Modals state
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isReportModalOpen, setIsReportModalOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
+  const [formError, setFormError] = useState<string | null>(null);
 
   // Form fields
   const [formName, setFormName] = useState('');
@@ -183,20 +191,21 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({
 
   const handleSaveProduct = (e: React.FormEvent) => {
     e.preventDefault();
+    setFormError(null);
     const priceUSD = parseFloat(formPriceUSD.replace(',', '.'));
     const stock = parseFloat(formStock.replace(',', '.'));
     const minAlert = parseFloat(formMinAlert.replace(',', '.')) || 3;
 
     if (!formName.trim()) {
-      alert('El nombre del producto es obligatorio.');
+      setFormError('El nombre del producto es obligatorio.');
       return;
     }
     if (isNaN(priceUSD) || priceUSD <= 0) {
-      alert('Introduce un precio de venta en USD válido.');
+      setFormError('Introduce un precio de venta en USD válido.');
       return;
     }
     if (isNaN(stock) || stock < 0) {
-      alert('Introduce un stock válido.');
+      setFormError('Introduce un stock válido mayor o igual a cero.');
       return;
     }
 
@@ -681,6 +690,11 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({
             </div>
 
             <form onSubmit={handleSaveProduct} className="mt-4 space-y-4 text-xs">
+              {formError && (
+                <div className="p-3 rounded-xl bg-rose-950/80 border border-rose-800 text-rose-300 text-xs font-semibold">
+                  {formError}
+                </div>
+              )}
               {/* Name & Emoji */}
               <div className="grid grid-cols-4 gap-2">
                 <div className="col-span-1">

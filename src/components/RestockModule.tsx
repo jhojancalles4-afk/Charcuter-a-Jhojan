@@ -142,27 +142,27 @@ export const RestockModule: React.FC<RestockModuleProps> = ({
     e.preventDefault();
 
     if (!selectedProductId || !selectedProduct) {
-      alert('Por favor selecciona un producto para reponer.');
+      onShowToast('⚠️ Por favor selecciona un producto para reponer.');
       return;
     }
 
     if (parsedQuantity <= 0) {
-      alert('Por favor ingresa una cantidad válida mayor a cero.');
+      onShowToast('⚠️ Por favor ingresa una cantidad válida mayor a cero.');
       return;
     }
 
     if (parsedUnitCost <= 0) {
-      alert('Por favor ingresa un costo unitario válido.');
+      onShowToast('⚠️ Por favor ingresa un costo unitario válido.');
       return;
     }
 
     if (paymentCondition === 'credito' && !dueDate) {
-      alert('Por favor indica la fecha límite de pago acordada con el proveedor.');
+      onShowToast('⚠️ Por favor indica la fecha límite de pago acordada con el proveedor.');
       return;
     }
 
     if (hasInitialAbono && parsedInitialAbono > calculatedTotalUSD) {
-      alert('El abono inicial no puede ser mayor que el costo total de la reposición.');
+      onShowToast('⚠️ El abono inicial no puede ser mayor que el costo total de la reposición.');
       return;
     }
 
@@ -214,7 +214,7 @@ export const RestockModule: React.FC<RestockModuleProps> = ({
       );
     } catch (err: any) {
       console.error('Error saving restock:', err);
-      alert(err.message || 'Error al procesar la reposición.');
+      onShowToast(`❌ ${err.message || 'Error al procesar la reposición.'}`);
     }
   };
 
@@ -223,12 +223,12 @@ export const RestockModule: React.FC<RestockModuleProps> = ({
     if (!activeRestockForAbono) return;
     const amount = parseFloat(abonoAmountInput.replace(',', '.'));
     if (isNaN(amount) || amount <= 0) {
-      alert('Por favor ingresa un monto válido a abonar.');
+      onShowToast('⚠️ Por favor ingresa un monto válido a abonar.');
       return;
     }
 
     if (amount > activeRestockForAbono.pendingUSD) {
-      alert(`El abono no puede superar la deuda pendiente ($${activeRestockForAbono.pendingUSD.toFixed(2)}).`);
+      onShowToast(`⚠️ El abono no puede superar la deuda pendiente ($${activeRestockForAbono.pendingUSD.toFixed(2)}).`);
       return;
     }
 
@@ -255,7 +255,7 @@ export const RestockModule: React.FC<RestockModuleProps> = ({
         `💵 Abono de $${amount.toFixed(2)} registrado al proveedor "${result.updatedRestock.supplierName}". Saldo restante: $${result.updatedRestock.pendingUSD.toFixed(2)}.`
       );
     } catch (err: any) {
-      alert(err.message || 'Error al registrar abono');
+      onShowToast(`❌ ${err.message || 'Error al registrar abono'}`);
     }
   };
 

@@ -789,11 +789,13 @@ export function printZReportThermal(report: ZReportData, settings: AppSettings):
   const canvas = generateZReportCanvas(report, settings);
   const dataUrl = canvas.toDataURL('image/png');
 
-  const printWindow = window.open('', '_blank');
-  if (!printWindow) {
-    alert('Por favor permite ventanas emergentes para imprimir el Reporte Z.');
-    return;
-  }
+  try {
+    const printWindow = window.open('', '_blank');
+    if (!printWindow) {
+      console.warn('Ventanas emergentes bloqueadas. Por favor permite popups para imprimir.');
+      window.print();
+      return;
+    }
 
   printWindow.document.write(`
     <!DOCTYPE html>
@@ -826,4 +828,8 @@ export function printZReportThermal(report: ZReportData, settings: AppSettings):
     </html>
   `);
   printWindow.document.close();
+  } catch (e) {
+    console.warn('Error al abrir ventana de impresión:', e);
+    window.print();
+  }
 }

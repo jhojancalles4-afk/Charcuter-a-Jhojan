@@ -13,6 +13,7 @@ import {
   FileText,
   Send,
   AlertTriangle,
+  AlertCircle,
   RotateCcw,
   Sparkles,
   ArrowRight,
@@ -36,6 +37,7 @@ interface POSModuleProps {
   existingCustomers: { name: string; cedula: string; phone: string }[];
   fidelisProfiles: Record<string, FidelisCustomerProfile>;
   onClaimFidelisReward: (customerId: string, rewardType: 'stamps' | 'highValue') => void;
+  onNavigateToInventory?: (product?: Product) => void;
 }
 
 export const POSModule: React.FC<POSModuleProps> = ({
@@ -45,12 +47,17 @@ export const POSModule: React.FC<POSModuleProps> = ({
   existingCustomers,
   fidelisProfiles,
   onClaimFidelisReward,
+  onNavigateToInventory,
 }) => {
   // State
   const [selectedCategory, setSelectedCategory] = useState<ProductCategory | 'Todos'>('Todos');
   const [searchQuery, setSearchQuery] = useState('');
   const [cart, setCart] = useState<CartItem[]>([]);
   const [isFidelisDirectoryOpen, setIsFidelisDirectoryOpen] = useState(false);
+
+  // Out of stock popup modal state
+  const [outOfStockProduct, setOutOfStockProduct] = useState<Product | null>(null);
+  const [weightModalError, setWeightModalError] = useState<string | null>(null);
 
   // Customer info
   const [customerName, setCustomerName] = useState('');
@@ -131,8 +138,14 @@ export const POSModule: React.FC<POSModuleProps> = ({
     };
   }, [cart, settings.bcvRate]);
 
-  // Add or edit product in cart
+  // Add or edit product in cart (Strict stock validation)
   const handleSelectProduct = (product: Product) => {
+    // If product has no stock, trigger out-of-stock popup modal and prevent sale
+    if (product.stock <= 0) {
+      setOutOfStockProduct(product);
+      return;
+    }
+
     if (product.unit === 'KG') {
       // Open weight selector modal
       setWeightModalProduct(product);
@@ -140,14 +153,25 @@ export const POSModule: React.FC<POSModuleProps> = ({
       setWeightInputValue('0.250'); // default 250g
       setMoneyInputValue('2.00'); // default $2
       setMoneyCurrency('USD');
+      setWeightModalError(null);
     } else {
-      // Unit product: add 1
+      // Unit product: check if adding 1 exceeds available stock
+      const existingInCart = cart.find((item) => item.product.id === product.id);
+      const currentQty = existingInCart ? existingInCart.quantity : 0;
+      if (currentQty + 1 > product.stock) {
+        setOutOfStockProduct(product);
+        return;
+      }
       addItemToCart(product, 1);
     }
   };
 
   const addItemToCart = (product: Product, quantity: number) => {
     if (quantity <= 0) return;
+    if (product.stock <= 0) {
+      setOutOfStockProduct(product);
+      return;
+    }
 
     setCart((prev) => {
       const existingIdx = prev.findIndex((item) => item.product.id === product.id);
@@ -156,20 +180,36 @@ export const POSModule: React.FC<POSModuleProps> = ({
       if (existingIdx >= 0) {
         const updated = [...prev];
         const newQty = updated[existingIdx].quantity + quantity;
+        if (newQty > product.stock) {
+          setScannerToast({
+            message: `⚠️ Stock máximo alcanzado para ${product.name}: solo hay ${formatQuantity(product.stock, product.unit)} disponible.`,
+            type: 'warning',
+          });
+          setTimeout(() => setScannerToast(null), 4000);
+          return prev;
+        }
         updated[existingIdx] = {
           ...updated[existingIdx],
           quantity: newQty,
-          totalUSD: newQty * unitPrice,
-          totalVES: newQty * unitPrice * settings.bcvRate,
+          totalUSD: Math.round(newQty * unitPrice * 100) / 100,
+          totalVES: Math.round(newQty * unitPrice * settings.bcvRate * 100) / 100,
         };
         return updated;
       } else {
+        if (quantity > product.stock) {
+          setScannerToast({
+            message: `⚠️ Stock máximo alcanzado para ${product.name}: solo hay ${formatQuantity(product.stock, product.unit)} disponible.`,
+            type: 'warning',
+          });
+          setTimeout(() => setScannerToast(null), 4000);
+          return prev;
+        }
         const item: CartItem = {
           product,
           quantity,
           unitPriceUSD: unitPrice,
-          totalUSD: quantity * unitPrice,
-          totalVES: quantity * unitPrice * settings.bcvRate,
+          totalUSD: Math.round(quantity * unitPrice * 100) / 100,
+          totalVES: Math.round(quantity * unitPrice * settings.bcvRate * 100) / 100,
         };
         return [...prev, item];
       }
@@ -178,8 +218,15 @@ export const POSModule: React.FC<POSModuleProps> = ({
 
   const handleConfirmWeightModal = () => {
     if (!weightModalProduct) return;
-    let qty = 0;
 
+    if (weightModalProduct.stock <= 0) {
+      const prod = weightModalProduct;
+      setWeightModalProduct(null);
+      setOutOfStockProduct(prod);
+      return;
+    }
+
+    let qty = 0;
     if (weightModalMode === 'money') {
       const moneyNum = parseFloat(moneyInputValue.replace(',', '.')) || 0;
       const moneyUSD =
@@ -197,8 +244,17 @@ export const POSModule: React.FC<POSModuleProps> = ({
     }
 
     if (!isNaN(qty) && qty > 0) {
+      const existingInCart = cart.find((item) => item.product.id === weightModalProduct.id);
+      const currentQty = existingInCart ? existingInCart.quantity : 0;
+      if (currentQty + qty > weightModalProduct.stock) {
+        setWeightModalError(
+          `Solo hay ${formatQuantity(weightModalProduct.stock, 'KG')} disponible en inventario. No es posible despachar ${formatQuantity(qty, 'KG')}.`
+        );
+        return;
+      }
       addItemToCart(weightModalProduct, qty);
       setWeightModalProduct(null);
+      setWeightModalError(null);
     }
   };
 
@@ -216,7 +272,21 @@ export const POSModule: React.FC<POSModuleProps> = ({
     });
 
     if (matchedProduct) {
+      if (matchedProduct.stock <= 0) {
+        setIsCameraScannerOpen(false);
+        setOutOfStockProduct(matchedProduct);
+        return false;
+      }
+
       if (matchedProduct.unit === 'UN') {
+        const existingInCart = cart.find((item) => item.product.id === matchedProduct.id);
+        const currentQty = existingInCart ? existingInCart.quantity : 0;
+        if (currentQty + 1 > matchedProduct.stock) {
+          setIsCameraScannerOpen(false);
+          setOutOfStockProduct(matchedProduct);
+          return false;
+        }
+
         // Automatically add 1 unit to cart
         addItemToCart(matchedProduct, 1);
         setScannerToast({
@@ -231,6 +301,7 @@ export const POSModule: React.FC<POSModuleProps> = ({
         setIsCameraScannerOpen(false);
         setWeightModalProduct(matchedProduct);
         setWeightInputValue('0.250');
+        setWeightModalError(null);
         setScannerToast({
           message: `⚖️ ${matchedProduct.emoji} ${matchedProduct.name}: ingresa el peso a despachar.`,
           type: 'success',
@@ -251,6 +322,9 @@ export const POSModule: React.FC<POSModuleProps> = ({
   };
 
   const updateCartItemQty = (productId: string, delta: number) => {
+    const targetProduct = products.find((p) => p.id === productId);
+    if (!targetProduct) return;
+
     setCart((prev) => {
       return prev
         .map((item) => {
@@ -258,11 +332,21 @@ export const POSModule: React.FC<POSModuleProps> = ({
           const step = item.product.unit === 'KG' ? 0.100 : 1;
           const newQty = Math.round((item.quantity + delta * step) * 1000) / 1000;
           if (newQty <= 0.0001) return null;
+
+          if (newQty > targetProduct.stock) {
+            setScannerToast({
+              message: `⚠️ Stock máximo alcanzado para ${targetProduct.name}: solo hay ${formatQuantity(targetProduct.stock, targetProduct.unit)} disponible.`,
+              type: 'warning',
+            });
+            setTimeout(() => setScannerToast(null), 4000);
+            return item;
+          }
+
           return {
             ...item,
             quantity: newQty,
-            totalUSD: newQty * item.unitPriceUSD,
-            totalVES: newQty * item.unitPriceUSD * settings.bcvRate,
+            totalUSD: Math.round(newQty * item.unitPriceUSD * 100) / 100,
+            totalVES: Math.round(newQty * item.unitPriceUSD * settings.bcvRate * 100) / 100,
           };
         })
         .filter((item): item is CartItem => item !== null);
@@ -435,6 +519,19 @@ export const POSModule: React.FC<POSModuleProps> = ({
       }
     }
 
+    // Strict Stock Check: Do not permit selling products without stock
+    const outOfStockItem = cart.find((it) => {
+      const prod = products.find((p) => p.id === it.product.id) || it.product;
+      return prod.stock <= 0 || it.quantity > prod.stock;
+    });
+
+    if (outOfStockItem) {
+      const targetProd = products.find((p) => p.id === outOfStockItem.product.id) || outOfStockItem.product;
+      setIsCheckoutOpen(false);
+      setOutOfStockProduct(targetProd);
+      return;
+    }
+
     // Deduct stock from products
     const updatedProducts = products.map((prod) => {
       const cartItem = cart.find((it) => it.product.id === prod.id);
@@ -554,6 +651,12 @@ ${isCredit ? `\n*Saldo Pendiente:* ${formatUSD(ticket.pendingUSD)} (~${formatVES
                 placeholder="Buscar por nombre, código o EAN..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && filteredProducts.length === 1) {
+                    e.preventDefault();
+                    handleSelectProduct(filteredProducts[0]);
+                  }
+                }}
                 className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-10 pr-4 py-2.5 text-xs sm:text-sm text-slate-100 placeholder:text-slate-500 focus:outline-rose-500 focus:border-rose-500 transition"
               />
               {searchQuery && (
@@ -611,7 +714,8 @@ ${isCredit ? `\n*Saldo Pendiente:* ${formatUSD(ticket.pendingUSD)} (~${formatVES
         <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-4 gap-2.5 overflow-y-auto max-h-[calc(100vh-250px)] pr-1">
           {filteredProducts.map((product) => {
             const priceVES = product.priceUSD * settings.bcvRate;
-            const isLowStock = product.stock <= (product.minStockAlert || 3);
+            const isOutOfStock = product.stock <= 0;
+            const isLowStock = !isOutOfStock && product.stock <= (product.minStockAlert || 3);
             const isKg = product.unit === 'KG';
 
             return (
@@ -619,20 +723,31 @@ ${isCredit ? `\n*Saldo Pendiente:* ${formatUSD(ticket.pendingUSD)} (~${formatVES
                 key={product.id}
                 id={`product-card-${product.id}`}
                 onClick={() => handleSelectProduct(product)}
-                className="group relative flex flex-col justify-between text-left p-3 rounded-2xl bg-slate-900 hover:bg-slate-800/90 border border-slate-800 hover:border-rose-500/50 transition-all duration-150 shadow-md hover:shadow-rose-950/20 active:scale-[0.98] cursor-pointer"
+                className={`group relative flex flex-col justify-between text-left p-3 rounded-2xl border transition-all duration-150 shadow-md active:scale-[0.98] cursor-pointer ${
+                  isOutOfStock
+                    ? 'bg-slate-900/95 border-rose-900/70 hover:border-rose-500 hover:bg-rose-950/20'
+                    : 'bg-slate-900 hover:bg-slate-800/90 border-slate-800 hover:border-rose-500/50 hover:shadow-rose-950/20'
+                }`}
               >
                 <div>
                   <div className="flex items-start justify-between gap-1 mb-2">
                     <span className="text-2xl filter drop-shadow-xs">{product.emoji}</span>
-                    <span
-                      className={`text-[10px] font-bold font-mono px-1.5 py-0.5 rounded-md ${
-                        isKg
-                          ? 'bg-emerald-950 text-emerald-300 border border-emerald-800/50'
-                          : 'bg-indigo-950 text-indigo-300 border border-indigo-800/50'
-                      }`}
-                    >
-                      {product.unit}
-                    </span>
+                    <div className="flex items-center gap-1">
+                      {isOutOfStock && (
+                        <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-md bg-rose-950 text-rose-300 border border-rose-800 animate-pulse">
+                          SIN STOCK
+                        </span>
+                      )}
+                      <span
+                        className={`text-[10px] font-bold font-mono px-1.5 py-0.5 rounded-md ${
+                          isKg
+                            ? 'bg-emerald-950 text-emerald-300 border border-emerald-800/50'
+                            : 'bg-indigo-950 text-indigo-300 border border-indigo-800/50'
+                        }`}
+                      >
+                        {product.unit}
+                      </span>
+                    </div>
                   </div>
                   <h4 className="text-xs sm:text-sm font-semibold text-slate-100 line-clamp-2 leading-snug group-hover:text-rose-300 transition">
                     {product.name}
@@ -650,11 +765,25 @@ ${isCredit ? `\n*Saldo Pendiente:* ${formatUSD(ticket.pendingUSD)} (~${formatVES
                     ~{formatVES(priceVES)}
                   </div>
                   <div className="mt-1 flex items-center justify-between text-[10px]">
-                    <span className={`font-mono ${isLowStock ? 'text-rose-400 font-bold' : 'text-slate-500'}`}>
+                    <span
+                      className={`font-mono ${
+                        isOutOfStock
+                          ? 'text-rose-400 font-bold'
+                          : isLowStock
+                          ? 'text-amber-400 font-bold'
+                          : 'text-slate-500'
+                      }`}
+                    >
                       Stock: {formatQuantity(product.stock, product.unit)}
                     </span>
-                    <span className="text-rose-400 opacity-0 group-hover:opacity-100 transition font-bold">
-                      {isKg ? '+ Pesar' : '+ Agregar'}
+                    <span
+                      className={`font-bold transition ${
+                        isOutOfStock
+                          ? 'text-rose-400'
+                          : 'text-rose-400 opacity-0 group-hover:opacity-100'
+                      }`}
+                    >
+                      {isOutOfStock ? '⚠️ Agotado' : isKg ? '+ Pesar' : '+ Agregar'}
                     </span>
                   </div>
                 </div>
@@ -932,6 +1061,21 @@ ${isCredit ? `\n*Saldo Pendiente:* ${formatUSD(ticket.pendingUSD)} (~${formatVES
                 <X className="w-5 h-5" />
               </button>
             </div>
+
+            {/* Available stock indicator & error banner */}
+            <div className="mt-2.5 px-3 py-1.5 rounded-xl bg-slate-950 border border-slate-800 flex items-center justify-between text-xs">
+              <span className="text-slate-400">Stock disponible en inventario:</span>
+              <span className="font-mono text-emerald-400 font-bold">
+                {formatQuantity(weightModalProduct.stock, 'KG')}
+              </span>
+            </div>
+
+            {weightModalError && (
+              <div className="mt-2 p-2.5 rounded-xl bg-rose-950/80 border border-rose-800 text-xs text-rose-200 flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 shrink-0 text-rose-400" />
+                <span>{weightModalError}</span>
+              </div>
+            )}
 
             {/* Mode Switcher Tabs */}
             <div className="grid grid-cols-2 gap-1.5 mt-3 p-1 bg-slate-950 border border-slate-800 rounded-xl">
@@ -1784,6 +1928,121 @@ ${isCredit ? `\n*Saldo Pendiente:* ${formatUSD(ticket.pendingUSD)} (~${formatVES
           setCustomerPhone(cust.phone);
         }}
       />
+
+      {/* MODAL 6: VENTANA EMERGENTE - PRODUCTO SIN STOCK */}
+      {outOfStockProduct && (
+        <div
+          id="modal-out-of-stock-alert"
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm animate-in fade-in duration-150"
+          role="dialog"
+          aria-modal="true"
+        >
+          <div className="bg-slate-900 border-2 border-rose-500 rounded-3xl max-w-md w-full p-6 shadow-2xl shadow-rose-950/60 space-y-4 animate-in zoom-in-95 duration-150">
+            {/* Header with Alert Icon */}
+            <div className="flex items-start justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <div className="w-12 h-12 rounded-2xl bg-rose-950/90 border border-rose-700 flex items-center justify-center text-rose-400 shrink-0 shadow-inner">
+                  <AlertTriangle className="w-6 h-6 animate-pulse" />
+                </div>
+                <div>
+                  <h3 className="text-base sm:text-lg font-black text-white leading-tight">
+                    ¡Producto Sin Stock Disponible!
+                  </h3>
+                  <span className="text-xs text-rose-400 font-semibold">
+                    Venta no permitida (Existencias agotadas)
+                  </span>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setOutOfStockProduct(null)}
+                className="text-slate-400 hover:text-white p-1.5 rounded-xl hover:bg-slate-800 transition cursor-pointer"
+                title="Cerrar"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Product Summary Card */}
+            <div className="p-4 rounded-2xl bg-slate-950 border border-slate-800 space-y-2.5">
+              <div className="flex items-center gap-3">
+                <span className="text-3xl filter drop-shadow-xs">{outOfStockProduct.emoji}</span>
+                <div className="min-w-0 flex-1">
+                  <h4 className="font-bold text-slate-100 text-sm truncate">
+                    {outOfStockProduct.name}
+                  </h4>
+                  <div className="flex items-center gap-2 text-xs text-slate-400 mt-0.5">
+                    <span className="px-2 py-0.5 rounded bg-slate-900 border border-slate-800 font-medium">
+                      {outOfStockProduct.category}
+                    </span>
+                    <span>•</span>
+                    <span className="font-mono font-semibold text-slate-300">
+                      Unidad: {outOfStockProduct.unit}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="pt-2 border-t border-slate-800/80 space-y-1.5 text-xs">
+                <div className="flex items-center justify-between">
+                  <span className="text-slate-400">Stock actual en inventario:</span>
+                  <span className="px-2.5 py-0.5 rounded-full bg-rose-950 border border-rose-800 text-rose-300 font-mono font-bold">
+                    {formatQuantity(outOfStockProduct.stock, outOfStockProduct.unit)} (Agotado)
+                  </span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-slate-400">Precio de venta:</span>
+                  <span className="font-mono text-emerald-400 font-bold">
+                    {formatUSD(outOfStockProduct.priceUSD)} / {outOfStockProduct.unit}
+                    <span className="text-slate-500 font-normal ml-1">
+                      (~{formatVES(outOfStockProduct.priceUSD * settings.bcvRate)})
+                    </span>
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            {/* Instruction Notice */}
+            <div className="p-3.5 rounded-2xl bg-amber-950/40 border border-amber-800/70 text-xs text-amber-200 leading-relaxed flex items-start gap-2.5">
+              <AlertCircle className="w-5 h-5 text-amber-400 shrink-0 mt-0.5" />
+              <div>
+                <p className="font-bold text-amber-100 mb-0.5">
+                  Acción requerida:
+                </p>
+                <p>
+                  No hay stock de este producto en el sistema. Para poder agregarlo a la venta, debe dirigirse a revisar en el <strong>Inventario</strong> para registrar la reposición o actualizar las existencias disponibles.
+                </p>
+              </div>
+            </div>
+
+            {/* Action Buttons */}
+            <div className="space-y-2 pt-1">
+              <button
+                type="button"
+                id="btn-go-to-inventory-from-modal"
+                onClick={() => {
+                  if (onNavigateToInventory) {
+                    onNavigateToInventory(outOfStockProduct);
+                  }
+                  setOutOfStockProduct(null);
+                }}
+                className="w-full py-3 rounded-xl bg-gradient-to-r from-rose-600 to-rose-700 hover:from-rose-500 hover:to-rose-600 active:from-rose-700 active:to-rose-800 text-white font-bold text-xs sm:text-sm flex items-center justify-center gap-2 shadow-lg shadow-rose-950/60 transition cursor-pointer"
+              >
+                <ArrowRight className="w-4 h-4" />
+                <span>Dirigirse a Revisar en Inventario</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setOutOfStockProduct(null)}
+                className="w-full py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 active:bg-slate-900 text-slate-300 hover:text-white font-semibold text-xs flex items-center justify-center gap-1.5 transition cursor-pointer"
+              >
+                <span>Entendido / Cerrar</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

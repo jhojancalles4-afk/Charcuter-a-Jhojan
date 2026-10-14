@@ -74,6 +74,7 @@ export const FiadosModule: React.FC<FiadosModuleProps> = ({
   const [abonoReference, setAbonoReference] = useState('');
   const [abonoNotes, setAbonoNotes] = useState('');
   const [abonoSuccessMsg, setAbonoSuccessMsg] = useState<string | null>(null);
+  const [abonoErrorMsg, setAbonoErrorMsg] = useState<string | null>(null);
 
   // Account deletion modal
   const [accountToDelete, setAccountToDelete] = useState<DebtorCustomer | null>(null);
@@ -180,17 +181,19 @@ export const FiadosModule: React.FC<FiadosModuleProps> = ({
     setAbonoReference('');
     setAbonoNotes('');
     setAbonoSuccessMsg(null);
+    setAbonoErrorMsg(null);
     setIsAbonoModalOpen(true);
   };
 
   // Submit Abono with automatic chronological amortization
   const handleSubmitAbono = (e: React.FormEvent) => {
     e.preventDefault();
+    setAbonoErrorMsg(null);
     if (!selectedDebtor) return;
 
     let parsedVal = parseFloat(abonoAmountUSD.replace(',', '.'));
     if (isNaN(parsedVal) || parsedVal <= 0) {
-      alert('Por favor introduce un monto válido para el abono.');
+      setAbonoErrorMsg('Por favor introduce un monto válido mayor a cero para el abono.');
       return;
     }
 
@@ -759,6 +762,11 @@ export const FiadosModule: React.FC<FiadosModuleProps> = ({
               </div>
             ) : (
               <form onSubmit={handleSubmitAbono} className="mt-4 space-y-3">
+                {abonoErrorMsg && (
+                  <div className="p-3 rounded-xl bg-rose-950/80 border border-rose-800 text-rose-300 text-xs font-semibold">
+                    {abonoErrorMsg}
+                  </div>
+                )}
                 {/* Debtor info */}
                 <div className="p-3 rounded-xl bg-slate-950 border border-slate-800 flex justify-between items-center text-xs">
                   <div>

@@ -59,6 +59,7 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
   >('cash_usd');
   const [abonoRefInput, setAbonoRefInput] = useState<string>('');
   const [abonoNotesInput, setAbonoNotesInput] = useState<string>('');
+  const [abonoError, setAbonoError] = useState<string | null>(null);
 
   // Credit Restocks Reminders
   const creditRestocks = useMemo(() => {
@@ -569,10 +570,19 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
               </div>
             </div>
 
+            {abonoError && (
+              <div className="p-2.5 rounded-xl bg-rose-950/80 border border-rose-800 text-rose-300 text-xs font-semibold">
+                {abonoError}
+              </div>
+            )}
+
             <div className="flex gap-2 pt-2">
               <button
                 type="button"
-                onClick={() => setActiveRestockForAbono(null)}
+                onClick={() => {
+                  setActiveRestockForAbono(null);
+                  setAbonoError(null);
+                }}
                 className="flex-1 py-2 rounded-xl text-xs font-semibold text-slate-300 bg-slate-800 hover:bg-slate-700 transition cursor-pointer"
               >
                 Cancelar
@@ -580,13 +590,14 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
               <button
                 type="button"
                 onClick={() => {
+                  setAbonoError(null);
                   const amt = parseFloat(abonoAmountInput.replace(',', '.'));
                   if (!amt || amt <= 0) {
-                    alert('Ingresa un monto válido.');
+                    setAbonoError('Por favor ingresa un monto válido mayor a cero.');
                     return;
                   }
                   if (amt > activeRestockForAbono.pendingUSD) {
-                    alert(`El abono supera el saldo pendiente ($${activeRestockForAbono.pendingUSD.toFixed(2)}).`);
+                    setAbonoError(`El abono supera el saldo pendiente ($${activeRestockForAbono.pendingUSD.toFixed(2)}).`);
                     return;
                   }
                   if (onAbonoToRestock) {

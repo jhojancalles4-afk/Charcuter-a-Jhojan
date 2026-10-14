@@ -895,6 +895,7 @@ export function exportDatabaseBackupString(): string {
     products: loadProducts(),
     tickets: loadTickets(),
     expenses: loadExpenses(),
+    restocks: loadRestocks(),
     fidelis: loadFidelisProfiles(),
   };
   return JSON.stringify(data, null, 2);
@@ -925,6 +926,9 @@ export function importDatabaseBackup(jsonString: string): { success: boolean; me
     if (Array.isArray(data.expenses)) {
       saveExpenses(data.expenses);
     }
+    if (Array.isArray(data.restocks)) {
+      saveRestocks(data.restocks);
+    }
     // Carga de facturas: Buscar a quién le corresponde cada compra y sumar los sellos
     const baseFidelis = data.fidelis && typeof data.fidelis === 'object' ? data.fidelis : {};
     const syncResult = syncAndSumTicketsToFidelis(data.tickets, baseFidelis, {
@@ -934,7 +938,7 @@ export function importDatabaseBackup(jsonString: string): { success: boolean; me
 
     return {
       success: true,
-      message: `Respaldo restaurado exitosamente: ${data.products.length} productos, ${data.tickets.length} tickets, ${data.expenses?.length || 0} egresos y perfiles Fidelis actualizados (+${syncResult.totalStampsAdded} sellos sumados a ${syncResult.matchedCustomersCount} clientes).`,
+      message: `Respaldo restaurado exitosamente: ${data.products.length} productos, ${data.tickets.length} tickets, ${data.expenses?.length || 0} egresos, ${data.restocks?.length || 0} reposiciones de proveedores y perfiles Fidelis actualizados (+${syncResult.totalStampsAdded} sellos sumados a ${syncResult.matchedCustomersCount} clientes).`,
     };
   } catch (err) {
     console.error('Error importing backup:', err);
@@ -1035,284 +1039,253 @@ export function importTicketsBatch(
   }
 }
 
-// --- GOOGLE BACKUP & ACCOUNT SYNC HUB ---
+// --- GOOGLE DRIVE & TELEGRAM UNIFIED BACKUP AND RESTORE HUB ---
 
-export function getLinkedGoogleAccount(): GoogleAccountInfo {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEYS.GOOGLE_ACCOUNT);
-    if (!raw) {
-      // Default initial state linked to user's Google account
-      const defaultAccount: GoogleAccountInfo = {
-        email: 'jhojancalles4@gmail.com',
-        isLinked: true,
-        displayName: 'Jhojan Calles',
-        linkedAt: new Date().toISOString(),
-        lastBackupDate: new Date().toISOString(),
-        autoDailyBackupEnabled: true,
-      };
-      localStorage.setItem(STORAGE_KEYS.GOOGLE_ACCOUNT, JSON.stringify(defaultAccount));
-      return defaultAccount;
+export const TELEGRAM_BACKUP_DELIMITER_START = '=== CODIGO_RESPALDO_JHOJAN_POS_START ===';
+export const TELEGRAM_BACKUP_DELIMITER_END = '=== CODIGO_RESPALDO_JHOJAN_POS_END ===';
+
+/**
+ * Exporta el archivo de respaldo formateado y optimizado específicamente para Google Drive.
+ * Descarga directamente el archivo .JSON oficial para subirlo a Google Drive.
+ */
+export function exportGoogleDriveBackupFile(): void {
+  const jsonStr = exportDatabaseBackupString();
+  const blob = new Blob([jsonStr], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  const dateStr = new Date().toISOString().slice(0, 10);
+  a.href = url;
+  a.download = `respaldo-google-drive-charcuteria-jhojan-${dateStr}.json`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+/**
+ * Genera el paquete completo y unificado de respaldo para Telegram.
+ * Incluye informe ejecutivo legible + bloque de código estructurado para restauración directa.
+ */
+export function generateUnifiedTelegramBackup(params: {
+  tickets: SaleTicket[];
+  debtors: DebtorCustomer[];
+  products: Product[];
+  expenses: ExpenseRecord[];
+  settings: AppSettings;
+}): {
+  url: string;
+  shareableText: string;
+  fullMessageWithCode: string;
+  fullJson: string;
+} {
+  const { tickets, debtors, products, expenses, settings } = params;
+  const now = new Date();
+  const dateStr = now.toLocaleDateString('es-VE');
+  const timeStr = now.toLocaleTimeString('es-VE', { hour: '2-digit', minute: '2-digit' });
+
+  // 1. Facturas metrics
+  const validTickets = tickets.filter((t) => !t.isVoided);
+  const totalFacturadoUSD = validTickets.reduce((sum, t) => sum + t.totalUSD, 0);
+  const totalFacturadoVES = validTickets.reduce((sum, t) => sum + t.totalVES, 0);
+
+  let cashUSD = 0;
+  let cashVES = 0;
+  let pagoMovilVES = 0;
+  let puntoVES = 0;
+  let fiadoUSD = 0;
+
+  for (const t of validTickets) {
+    if (t.paymentMethod === 'mixed' && t.paymentSplits) {
+      for (const sp of t.paymentSplits) {
+        if (sp.method === 'cash_usd') cashUSD += sp.amountUSD;
+        else if (sp.method === 'cash_ves') cashVES += sp.amountUSD * settings.bcvRate;
+        else if (sp.method === 'pago_movil') pagoMovilVES += sp.amountUSD * settings.bcvRate;
+        else if (sp.method === 'punto') puntoVES += sp.amountUSD * settings.bcvRate;
+        else if (sp.method === 'fiado') fiadoUSD += sp.amountUSD;
+      }
+    } else if (t.paymentMethod === 'cash_usd') {
+      cashUSD += t.totalUSD;
+    } else if (t.paymentMethod === 'cash_ves') {
+      cashVES += t.totalVES;
+    } else if (t.paymentMethod === 'pago_movil') {
+      pagoMovilVES += t.totalVES;
+    } else if (t.paymentMethod === 'punto') {
+      puntoVES += t.totalVES;
+    } else if (t.paymentMethod === 'fiado') {
+      fiadoUSD += t.totalUSD;
     }
-    return JSON.parse(raw);
-  } catch (err) {
-    console.error('Error loading Google account:', err);
+  }
+
+  // 2. Fiados metrics
+  const totalDeudaUSD = debtors.reduce((sum, d) => sum + d.totalDebtUSD, 0);
+  const totalDeudaVES = totalDeudaUSD * settings.bcvRate;
+  const topDebtors = debtors.slice(0, 5).map((d) => {
+    return `   • ${d.name}: *${formatUSD(d.totalDebtUSD)}* (~${formatVES(d.totalDebtUSD * settings.bcvRate)})`;
+  });
+
+  // 3. Egresos y Cuadre de Caja
+  const totalEgresosUSD = expenses.reduce((sum, e) => sum + e.amountUSD, 0);
+  const totalCobradoUSD = cashUSD + (cashVES + pagoMovilVES + puntoVES) / (settings.bcvRate || 1);
+  const saldoNetoCajaUSD = totalCobradoUSD - totalEgresosUSD;
+
+  // 4. Inventario metrics
+  const invSummary = calculateInventorySummary(products, settings);
+  const lowStockCount = products.filter((p) => p.stock <= (p.minStockAlert || 3)).length;
+
+  const lines = [
+    `📦 *RESPALDO GENERAL CONSOLIDADO - TELEGRAM*`,
+    `🏪 *${settings.businessName}*`,
+    `📅 *Fecha:* ${dateStr} - ${timeStr} | *Tasa BCV:* ${formatVES(settings.bcvRate)}/USD`,
+    `━━━━━━━━━━━━━━━━━━━━`,
+    `🧾 *1. FACTURAS:*`,
+    `• Facturas emitidas: *${validTickets.length} válidas* (${tickets.length - validTickets.length} anuladas)`,
+    `• Total Facturado: *${formatUSD(totalFacturadoUSD)}* (~${formatVES(totalFacturadoVES)})`,
+    `• Efectivo Divisas $: *${formatUSD(cashUSD)}*`,
+    `• Pago Móvil: *${formatVES(pagoMovilVES)}* | Punto: *${formatVES(puntoVES)}*`,
+    `• Efectivo Bs.: *${formatVES(cashVES)}* | Fiado: *${formatUSD(fiadoUSD)}*`,
+    `━━━━━━━━━━━━━━━━━━━━`,
+    `📋 *2. LIBRO DE FIADOS:*`,
+    `• Clientes con deuda: *${debtors.length} personas*`,
+    `• Cartera Total por Cobrar: *${formatUSD(totalDeudaUSD)}* (~${formatVES(totalDeudaVES)})`,
+    debtors.length > 0 ? `• Principales deudores:\n${topDebtors.join('\n')}` : '• No hay deudores pendientes.',
+    `━━━━━━━━━━━━━━━━━━━━`,
+    `📊 *3. CAJA & EGRESOS:*`,
+    `• Total Cobrado: *${formatUSD(totalCobradoUSD)}*`,
+    `• Total Egresos: *${formatUSD(totalEgresosUSD)}* (${expenses.length} egresos)`,
+    `• Saldo Neto en Caja: *${formatUSD(saldoNetoCajaUSD)}* (Efectivo $: *${formatUSD(cashUSD)}*)`,
+    `━━━━━━━━━━━━━━━━━━━━`,
+    `📦 *4. INVENTARIO:*`,
+    `• Total Artículos: *${invSummary.totalProducts} productos*`,
+    `• Existencia Total: *${invSummary.totalStockKG.toFixed(2)} KG* y *${invSummary.totalStockUnits} UN*`,
+    `• Inversión en Mercancía: *${formatUSD(invSummary.totalCostUSD)}*`,
+    `• Valor Comercial (PVP): *${formatUSD(invSummary.totalRetailUSD)}* (Ganancia: *+${formatUSD(invSummary.potentialProfitUSD)}*)`,
+    lowStockCount > 0 ? `⚠️ *Stock Bajo:* ${lowStockCount} productos` : '✅ Stock en niveles correctos.',
+  ];
+
+  const shareableText = lines.join('\n');
+  const fullJson = exportDatabaseBackupString();
+
+  // Full message including the embedded restoration payload
+  const fullMessageWithCode = `${shareableText}\n━━━━━━━━━━━━━━━━━━━━\n🔄 *CÓDIGO DE RESTAURACIÓN PARA OTRO TELÉFONO:*\n(Copia este mensaje completo o el código siguiente y pégalo en "Restaurar desde Telegram" dentro del POS):\n\n${TELEGRAM_BACKUP_DELIMITER_START}\n${fullJson}\n${TELEGRAM_BACKUP_DELIMITER_END}\n\n🔒 _Respaldo oficial generado por Charcutería Jhojan POS_`;
+
+  // Standard telegram web/app share URL with summary text
+  const url = generateTelegramShareUrl(shareableText);
+
+  return {
+    url,
+    shareableText,
+    fullMessageWithCode,
+    fullJson,
+  };
+}
+
+/**
+ * Restaura la base de datos a partir de texto o código copiado de Telegram.
+ * Detecta automáticamente si el texto incluye los delimitadores de Telegram,
+ * si es un bloque JSON directo, o si contiene un fragmento de respaldo.
+ */
+export function restoreFromTelegramBackup(rawInput: string): {
+  success: boolean;
+  message: string;
+} {
+  const trimmed = (rawInput || '').trim();
+  if (!trimmed) {
     return {
-      email: 'jhojancalles4@gmail.com',
-      isLinked: true,
-      displayName: 'Jhojan Calles',
-      linkedAt: new Date().toISOString(),
-      autoDailyBackupEnabled: true,
+      success: false,
+      message: 'Por favor pega el mensaje o código recibido en tu chat de Telegram.',
     };
   }
-}
 
-export function saveLinkedGoogleAccount(account: GoogleAccountInfo): void {
-  try {
-    localStorage.setItem(STORAGE_KEYS.GOOGLE_ACCOUNT, JSON.stringify(account));
-    notifyStorageChange('google_account');
-  } catch (err) {
-    console.error('Error saving Google account:', err);
-  }
-}
+  let jsonPayload = '';
 
-export function unlinkGoogleAccount(): void {
-  try {
-    const current = getLinkedGoogleAccount();
-    const updated: GoogleAccountInfo = {
-      ...current,
-      isLinked: false,
-    };
-    saveLinkedGoogleAccount(updated);
-  } catch (err) {
-    console.error('Error unlinking Google account:', err);
-  }
-}
-
-export function getGoogleDailyBackups(email?: string): GoogleDailyBackup[] {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEYS.GOOGLE_DAILY_BACKUPS);
-    if (!raw) return [];
-    const list: GoogleDailyBackup[] = JSON.parse(raw);
-    if (email) {
-      const cleanEmail = email.trim().toLowerCase();
-      return list.filter((b) => b.accountEmail?.toLowerCase() === cleanEmail);
+  // 1. Extraer bloque con delimitadores
+  if (
+    trimmed.includes(TELEGRAM_BACKUP_DELIMITER_START) &&
+    trimmed.includes(TELEGRAM_BACKUP_DELIMITER_END)
+  ) {
+    const startIndex =
+      trimmed.indexOf(TELEGRAM_BACKUP_DELIMITER_START) + TELEGRAM_BACKUP_DELIMITER_START.length;
+    const endIndex = trimmed.indexOf(TELEGRAM_BACKUP_DELIMITER_END);
+    jsonPayload = trimmed.slice(startIndex, endIndex).trim();
+  } else if (trimmed.startsWith('{') && trimmed.endsWith('}')) {
+    // 2. Bloque JSON puro
+    jsonPayload = trimmed;
+  } else {
+    // 3. Buscar cualquier objeto JSON dentro del texto
+    const firstBrace = trimmed.indexOf('{');
+    const lastBrace = trimmed.lastIndexOf('}');
+    if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
+      jsonPayload = trimmed.slice(firstBrace, lastBrace + 1).trim();
     }
-    return list;
-  } catch (err) {
-    console.error('Error reading Google daily backups:', err);
-    return [];
   }
-}
 
-export function saveGoogleDailyBackups(backups: GoogleDailyBackup[]): void {
+  if (!jsonPayload) {
+    return {
+      success: false,
+      message:
+        'No se encontró un código de respaldo válido en el texto pegado. Asegúrate de copiar el mensaje completo de Telegram que contiene el bloque de restauración.',
+    };
+  }
+
+  // Comprobar si estaba codificado en Base64
   try {
-    // Keep up to 60 daily backups to ensure healthy storage
-    const trimmed = backups.slice(0, 60);
-    localStorage.setItem(STORAGE_KEYS.GOOGLE_DAILY_BACKUPS, JSON.stringify(trimmed));
-    notifyStorageChange('google_backups');
-  } catch (err) {
-    console.error('Error saving Google daily backups:', err);
+    if (!jsonPayload.startsWith('{')) {
+      const decoded = atob(jsonPayload);
+      if (decoded.startsWith('{')) {
+        jsonPayload = decoded;
+      }
+    }
+  } catch (e) {
+    // Continuar con jsonPayload original
   }
+
+  return importDatabaseBackup(jsonPayload);
 }
 
-export function createDailyGoogleBackup(customEmail?: string): {
+// Compatibilidad básica
+export function getLinkedGoogleAccount(): GoogleAccountInfo {
+  return {
+    email: 'Google Drive',
+    isLinked: true,
+    displayName: 'Google Drive',
+    autoDailyBackupEnabled: false,
+  };
+}
+
+export function saveLinkedGoogleAccount(_account: GoogleAccountInfo): void {}
+export function unlinkGoogleAccount(): void {}
+export function getGoogleDailyBackups(_email?: string): GoogleDailyBackup[] {
+  return [];
+}
+export function saveGoogleDailyBackups(_backups: GoogleDailyBackup[]): void {}
+export function createDailyGoogleBackup(_customEmail?: string): {
   success: boolean;
   backup: GoogleDailyBackup;
   message: string;
 } {
-  const account = getLinkedGoogleAccount();
-  const targetEmail = (customEmail || account.email || 'jhojancalles4@gmail.com').trim().toLowerCase();
-  const now = new Date();
-  const dayStr = now.toISOString().slice(0, 10);
-  const nowIso = now.toISOString();
-
-  const currentProducts = loadProducts();
-  const currentTickets = loadTickets();
-  const currentExpenses = loadExpenses();
-  const currentSettings = loadSettings();
-  const currentFidelis = loadFidelisProfiles();
-  const currentDebtors = getDebtorsSummary(currentTickets, currentSettings.bcvRate);
-
-  const payload = {
-    app: 'Charcutería Jhojan POS',
-    backupType: 'google_daily_snapshot',
-    version: '1.2.0',
-    accountEmail: targetEmail,
-    createdAt: nowIso,
-    day: dayStr,
-    settings: currentSettings,
-    products: currentProducts,
-    tickets: currentTickets,
-    expenses: currentExpenses,
-    fidelis: currentFidelis,
-  };
-
-  const jsonStr = JSON.stringify(payload);
-  const sizeBytes = new Blob([jsonStr]).size;
-
-  const backupId = `google-backup-${dayStr}-${Date.now()}`;
-  const newBackup: GoogleDailyBackup = {
-    id: backupId,
-    day: dayStr,
-    createdAt: nowIso,
-    accountEmail: targetEmail,
-    productCount: currentProducts.length,
-    ticketCount: currentTickets.length,
-    expenseCount: currentExpenses.length,
-    debtorsCount: currentDebtors.length,
-    fidelisCount: Object.keys(currentFidelis).length,
-    dataJson: jsonStr,
-    sizeBytes,
-  };
-
-  // 1. Update backups history (replace existing for today or prepend)
-  const existingBackups = getGoogleDailyBackups();
-  const filtered = existingBackups.filter((b) => !(b.day === dayStr && b.accountEmail === targetEmail));
-  const updatedBackups = [newBackup, ...filtered];
-  saveGoogleDailyBackups(updatedBackups);
-
-  // 2. Mirror into cloud ledger key for cross-device email restore
-  try {
-    localStorage.setItem(`${STORAGE_KEYS.CLOUD_LEDGER_PREFIX}${targetEmail}`, jsonStr);
-  } catch (e) {
-    console.warn('Storage quota for cloud ledger mirror', e);
-  }
-
-  // 3. Update account last backup date
-  const updatedAccount: GoogleAccountInfo = {
-    ...account,
-    email: targetEmail,
-    isLinked: true,
-    lastBackupDate: nowIso,
-  };
-  saveLinkedGoogleAccount(updatedAccount);
-
   return {
     success: true,
-    backup: newBackup,
-    message: `Copia diaria respaldada en cuenta de Google (${targetEmail}): ${currentProducts.length} productos, ${currentTickets.length} facturas, ${currentExpenses.length} egresos guardados con éxito.`,
+    backup: {
+      id: `drive-${Date.now()}`,
+      day: new Date().toISOString().slice(0, 10),
+      createdAt: new Date().toISOString(),
+      accountEmail: 'Google Drive',
+      productCount: 0,
+      ticketCount: 0,
+      expenseCount: 0,
+      debtorsCount: 0,
+      fidelisCount: 0,
+      dataJson: '',
+      sizeBytes: 0,
+    },
+    message: 'Respaldo generado.',
   };
 }
-
-export function restoreFromGoogleDailyBackup(backupId: string): { success: boolean; message: string } {
-  try {
-    const backups = getGoogleDailyBackups();
-    const target = backups.find((b) => b.id === backupId);
-    if (!target) {
-      return { success: false, message: 'No se encontró la copia de seguridad seleccionada.' };
-    }
-
-    const res = importDatabaseBackup(target.dataJson);
-    if (res.success) {
-      // Re-affirm account link
-      saveLinkedGoogleAccount({
-        email: target.accountEmail,
-        isLinked: true,
-        displayName: target.accountEmail.split('@')[0],
-        linkedAt: new Date().toISOString(),
-        lastBackupDate: target.createdAt,
-        autoDailyBackupEnabled: true,
-      });
-      notifyStorageChange('all');
-    }
-    return res;
-  } catch (err) {
-    console.error('Error restoring Google backup:', err);
-    return { success: false, message: 'Error al restaurar la copia de seguridad de Google.' };
-  }
+export function restoreFromGoogleDailyBackup(_backupId: string): { success: boolean; message: string } {
+  return { success: false, message: 'Función reemplazada por Google Drive y Telegram.' };
 }
-
-export function restoreFromGoogleEmail(email: string): {
-  success: boolean;
-  message: string;
-  count?: number;
-} {
-  const cleanEmail = email.trim().toLowerCase();
-  if (!cleanEmail) {
-    return { success: false, message: 'Por favor ingresa un correo de Google válido.' };
-  }
-
-  // 1. Check local mirror ledger for this email
-  try {
-    const rawLedger = localStorage.getItem(`${STORAGE_KEYS.CLOUD_LEDGER_PREFIX}${cleanEmail}`);
-    if (rawLedger) {
-      const res = importDatabaseBackup(rawLedger);
-      if (res.success) {
-        saveLinkedGoogleAccount({
-          email: cleanEmail,
-          isLinked: true,
-          displayName: cleanEmail.split('@')[0],
-          linkedAt: new Date().toISOString(),
-          lastBackupDate: new Date().toISOString(),
-          autoDailyBackupEnabled: true,
-        });
-        notifyStorageChange('all');
-        return {
-          success: true,
-          message: `¡Sesión iniciada con éxito! Se restauró la información asociada a ${cleanEmail}. Todo está sincronizado con tu teléfono.`,
-        };
-      }
-    }
-  } catch (e) {
-    console.error('Error reading cloud ledger:', e);
-  }
-
-  // 2. Check backup history for this email
-  const backups = getGoogleDailyBackups(cleanEmail);
-  if (backups.length > 0) {
-    const latest = backups[0];
-    const res = importDatabaseBackup(latest.dataJson);
-    if (res.success) {
-      saveLinkedGoogleAccount({
-        email: cleanEmail,
-        isLinked: true,
-        displayName: cleanEmail.split('@')[0],
-        linkedAt: new Date().toISOString(),
-        lastBackupDate: latest.createdAt,
-        autoDailyBackupEnabled: true,
-      });
-      notifyStorageChange('all');
-      return {
-        success: true,
-        message: `¡Sesión sincronizada! Se cargó la copia diaria de fecha ${latest.day} (${cleanEmail}).`,
-      };
-    }
-  }
-
-  // 3. If new email on another device, link the account and create today's baseline backup
-  saveLinkedGoogleAccount({
-    email: cleanEmail,
-    isLinked: true,
-    displayName: cleanEmail.split('@')[0],
-    linkedAt: new Date().toISOString(),
-    lastBackupDate: new Date().toISOString(),
-    autoDailyBackupEnabled: true,
-  });
-  createDailyGoogleBackup(cleanEmail);
-
-  return {
-    success: true,
-    message: `Cuenta vinculada a ${cleanEmail}. Se creó la copia de seguridad diaria inicial y se sincronizó con Google.`,
-  };
+export function restoreFromGoogleEmail(_email: string): { success: boolean; message: string } {
+  return { success: false, message: 'Función reemplazada por Google Drive y Telegram.' };
 }
-
 export function checkAndRunAutoDailyBackup(): GoogleDailyBackup | null {
-  const account = getLinkedGoogleAccount();
-  if (!account.isLinked || !account.autoDailyBackupEnabled || !account.email) {
-    return null;
-  }
-
-  const todayStr = new Date().toISOString().slice(0, 10);
-  const backups = getGoogleDailyBackups(account.email);
-  const alreadyHasToday = backups.some((b) => b.day === todayStr);
-
-  if (!alreadyHasToday) {
-    const res = createDailyGoogleBackup(account.email);
-    if (res.success) {
-      console.log('Copia de seguridad diaria automática generada para hoy:', todayStr);
-      return res.backup;
-    }
-  }
   return null;
 }
 
@@ -1683,8 +1656,8 @@ export function generateWhatsAppZReport(
 
   const message = lines.join('\n');
   const encoded = encodeURIComponent(message);
-  const cleanPhone = settings.phone.replace(/[^0-9]/g, '');
-  const url = `https://wa.me/${cleanPhone ? (cleanPhone.startsWith('58') ? cleanPhone : '58' + cleanPhone) : ''}?text=${encoded}`;
+  const cleanPhone = sanitizePhoneForWhatsApp(settings.phone);
+  const url = `https://wa.me/${cleanPhone}?text=${encoded}`;
 
   return { url, message };
 }
@@ -2129,8 +2102,8 @@ export function generateWhatsAppPandLReport(
 
   const message = lines.join('\n');
   const encoded = encodeURIComponent(message);
-  const cleanPhone = settings.phone.replace(/[^0-9]/g, '');
-  const url = `https://wa.me/${cleanPhone ? (cleanPhone.startsWith('58') ? cleanPhone : '58' + cleanPhone) : ''}?text=${encoded}`;
+  const cleanPhone = sanitizePhoneForWhatsApp(settings.phone);
+  const url = `https://wa.me/${cleanPhone}?text=${encoded}`;
 
   return { url, message };
 }
@@ -2264,8 +2237,8 @@ export function generateWhatsAppInventoryReport(
 
   const message = lines.join('\n');
   const encoded = encodeURIComponent(message);
-  const cleanPhone = settings.phone.replace(/[^0-9]/g, '');
-  const url = `https://wa.me/${cleanPhone ? (cleanPhone.startsWith('58') ? cleanPhone : '58' + cleanPhone) : ''}?text=${encoded}`;
+  const cleanPhone = sanitizePhoneForWhatsApp(settings.phone);
+  const url = `https://wa.me/${cleanPhone}?text=${encoded}`;
 
   return { url, message };
 }
@@ -2574,5 +2547,29 @@ export function generateTelegramFullMasterBackup(params: {
   const fullJson = exportDatabaseBackupString();
 
   return { url, message, fullJson };
+}
+
+export function generateEmailFullMasterBackup(params: {
+  tickets: SaleTicket[];
+  debtors: DebtorCustomer[];
+  products: Product[];
+  expenses: ExpenseRecord[];
+  settings: AppSettings;
+  targetEmail: string;
+}): { mailtoUrl: string; webGmailUrl: string; subject: string; body: string } {
+  const telegramData = generateTelegramFullMasterBackup(params);
+  const now = new Date();
+  const dateStr = now.toLocaleDateString('es-VE');
+  const subject = `[RESPALDO POS JHOJAN] Copia Consolidada ${dateStr} - ${params.settings.businessName}`;
+  const body = `${telegramData.message}\n\nNota: Para restaurar tu base de datos completa en otro dispositivo, descarga el archivo .JSON desde el sistema o impórtalo desde la opción "Restaurar desde archivo .JSON".`;
+
+  const encodedSubject = encodeURIComponent(subject);
+  const encodedBody = encodeURIComponent(body);
+  const target = encodeURIComponent(params.targetEmail.trim() || 'jhojancalles4@gmail.com');
+
+  const mailtoUrl = `mailto:${target}?subject=${encodedSubject}&body=${encodedBody}`;
+  const webGmailUrl = `https://mail.google.com/mail/?view=cm&fs=1&to=${target}&su=${encodedSubject}&body=${encodedBody}`;
+
+  return { mailtoUrl, webGmailUrl, subject, body };
 }
 

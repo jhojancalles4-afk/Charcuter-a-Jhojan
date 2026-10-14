@@ -104,18 +104,57 @@ export const PWAInstallButton: React.FC = () => {
     );
   }
 
+  const [showGeneralGuide, setShowGeneralGuide] = useState(false);
+
   // Fallback if not yet triggered (still useful info button)
   return (
-    <button
-      id="btn-pwa-info"
-      onClick={() => {
-        alert('Para instalar este POS en tu dispositivo: abre el menú de tu navegador (los tres puntos o botón de compartir) y selecciona "Instalar aplicación" o "Agregar a la pantalla principal".');
-      }}
-      className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-slate-800/80 hover:bg-slate-700 border border-slate-700/60 text-slate-300 text-xs font-medium transition cursor-pointer"
-      title="Disponible para instalar como App"
-    >
-      <Download className="w-3.5 h-3.5 text-rose-400" />
-      <span className="hidden sm:inline">PWA Offline</span>
-    </button>
+    <>
+      <button
+        id="btn-pwa-info"
+        onClick={() => setShowGeneralGuide(true)}
+        className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-slate-800/80 hover:bg-slate-700 border border-slate-700/60 text-slate-300 text-xs font-medium transition cursor-pointer"
+        title="Disponible para instalar como App"
+      >
+        <Download className="w-3.5 h-3.5 text-rose-400" />
+        <span className="hidden sm:inline">PWA Offline</span>
+      </button>
+
+      {showGeneralGuide && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-xs p-4">
+          <div className="w-full max-w-sm rounded-2xl bg-slate-900 border border-slate-700 p-5 shadow-2xl text-slate-100">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+              <div className="flex items-center gap-2">
+                <Smartphone className="w-5 h-5 text-rose-400" />
+                <h3 className="font-semibold text-sm">Instalar Aplicación PWA</h3>
+              </div>
+              <button
+                onClick={() => setShowGeneralGuide(false)}
+                className="p-1 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800 transition cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="mt-4 space-y-3 text-xs text-slate-300 leading-relaxed">
+              <p>
+                Para tener este POS instalado en tu dispositivo y usarlo 100% sin conexión:
+              </p>
+              <div className="p-3 rounded-xl bg-slate-800/70 border border-slate-700/70 space-y-2">
+                <p>1. Abre el menú de tu navegador (los tres puntos <strong>⋮</strong> o ícono de compartir).</p>
+                <p>2. Selecciona <strong>«Instalar aplicación»</strong> o <strong>«Agregar a la pantalla principal»</strong>.</p>
+                <p>3. Abre la aplicación desde tu pantalla de inicio.</p>
+              </div>
+            </div>
+
+            <button
+              onClick={() => setShowGeneralGuide(false)}
+              className="mt-5 w-full py-2.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-xs font-semibold transition cursor-pointer"
+            >
+              Entendido
+            </button>
+          </div>
+        </div>
+      )}
+    </>
   );
 };
