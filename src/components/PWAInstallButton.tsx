@@ -1,134 +1,138 @@
-import React, { useState } from 'react';
-import { Download, Smartphone, X, CheckCircle2, Share } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Download, Smartphone, X, CheckCircle2, Share, PlusSquare, ArrowDownToLine } from 'lucide-react';
 import { usePWAInstall } from '../hooks/usePWAInstall';
 
 export const PWAInstallButton: React.FC = () => {
-  const { isInstallable, isInstalled, isIOS, install } = usePWAInstall();
+  const { isInstallable, isInstalled, isIOS, isAndroid, isMobile, install } = usePWAInstall();
   const [showIOSGuide, setShowIOSGuide] = useState(false);
+  const [showAndroidGuide, setShowAndroidGuide] = useState(false);
+  const [showBanner, setShowBanner] = useState(false);
   const [isInstalling, setIsInstalling] = useState(false);
 
-  // If already installed and running standalone, show subtle active badge
-  if (isInstalled) {
-    return (
-      <div
-        id="pwa-installed-badge"
-        className="hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-slate-800/80 border border-slate-700/60 text-[11px] font-medium text-emerald-400"
-        title="Aplicación instalada y lista para uso offline"
-      >
-        <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
-        <span>PWA Activa</span>
-      </div>
-    );
-  }
+  // Check if banner was dismissed in this session
+  useEffect(() => {
+    if (!isInstalled && isMobile) {
+      const dismissed = sessionStorage.getItem('pwa_banner_dismissed');
+      if (!dismissed) {
+        setShowBanner(true);
+      }
+    } else {
+      setShowBanner(false);
+    }
+  }, [isInstalled, isMobile]);
+
+  const handleDismissBanner = () => {
+    sessionStorage.setItem('pwa_banner_dismissed', 'true');
+    setShowBanner(false);
+  };
 
   const handleInstallClick = async () => {
-    setIsInstalling(true);
-    try {
-      await install();
-    } finally {
-      setIsInstalling(false);
+    if (isInstallable) {
+      setIsInstalling(true);
+      try {
+        const outcome = await install();
+        if (outcome) {
+          setShowBanner(false);
+        }
+      } finally {
+        setIsInstalling(false);
+      }
+    } else if (isIOS) {
+      setShowIOSGuide(true);
+    } else {
+      setShowAndroidGuide(true);
     }
   };
 
-  // Chromium / Android / Desktop flow
-  if (isInstallable) {
-    return (
-      <button
-        id="btn-install-pwa"
-        onClick={handleInstallClick}
-        disabled={isInstalling}
-        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-rose-600 hover:bg-rose-500 active:bg-rose-700 text-white text-xs font-semibold shadow-md transition-all duration-150 animate-pulse hover:animate-none cursor-pointer"
-        title="Instalar como App en este dispositivo"
-      >
-        <Download className="w-3.5 h-3.5" />
-        <span>Instalar App</span>
-      </button>
-    );
-  }
-
-  // iOS Safari flow
-  if (isIOS) {
-    return (
-      <>
-        <button
-          id="btn-install-ios-pwa"
-          onClick={() => setShowIOSGuide(true)}
-          className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 text-xs font-medium transition cursor-pointer"
-          title="Instrucciones para instalar en iPhone/iPad"
-        >
-          <Smartphone className="w-3.5 h-3.5 text-rose-400" />
-          <span>Instalar en iOS</span>
-        </button>
-
-        {showIOSGuide && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-xs p-4">
-            <div className="w-full max-w-sm rounded-2xl bg-slate-900 border border-slate-700 p-5 shadow-2xl text-slate-100">
-              <div className="flex items-center justify-between pb-3 border-b border-slate-800">
-                <div className="flex items-center gap-2">
-                  <Smartphone className="w-5 h-5 text-rose-400" />
-                  <h3 className="font-semibold text-sm">Instalar en iPhone / iPad</h3>
-                </div>
-                <button
-                  onClick={() => setShowIOSGuide(false)}
-                  className="p-1 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800 transition cursor-pointer"
-                >
-                  <X className="w-4 h-4" />
-                </button>
-              </div>
-
-              <div className="mt-4 space-y-3 text-xs text-slate-300 leading-relaxed">
-                <div className="flex items-start gap-2.5 p-2 rounded-lg bg-slate-800/60 border border-slate-700/50">
-                  <span className="flex items-center justify-center w-5 h-5 rounded-full bg-rose-500/20 text-rose-300 text-[11px] font-bold shrink-0">1</span>
-                  <p>Toca el botón <strong>Compartir</strong> <Share className="w-3.5 h-3.5 inline mx-0.5 text-rose-400" /> en la barra inferior de Safari.</p>
-                </div>
-                <div className="flex items-start gap-2.5 p-2 rounded-lg bg-slate-800/60 border border-slate-700/50">
-                  <span className="flex items-center justify-center w-5 h-5 rounded-full bg-rose-500/20 text-rose-300 text-[11px] font-bold shrink-0">2</span>
-                  <p>Baja en el menú y selecciona <strong>«Agregar al inicio»</strong> (+).</p>
-                </div>
-                <div className="flex items-start gap-2.5 p-2 rounded-lg bg-slate-800/60 border border-slate-700/50">
-                  <span className="flex items-center justify-center w-5 h-5 rounded-full bg-rose-500/20 text-rose-300 text-[11px] font-bold shrink-0">3</span>
-                  <p>Presiona <strong>«Agregar»</strong>. ¡Listo! Podrás abrir el POS sin conexión y a pantalla completa.</p>
-                </div>
-              </div>
-
-              <button
-                onClick={() => setShowIOSGuide(false)}
-                className="mt-5 w-full py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold transition cursor-pointer"
-              >
-                Entendido
-              </button>
-            </div>
-          </div>
-        )}
-      </>
-    );
-  }
-
-  const [showGeneralGuide, setShowGeneralGuide] = useState(false);
-
-  // Fallback if not yet triggered (still useful info button)
   return (
     <>
-      <button
-        id="btn-pwa-info"
-        onClick={() => setShowGeneralGuide(true)}
-        className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-slate-800/80 hover:bg-slate-700 border border-slate-700/60 text-slate-300 text-xs font-medium transition cursor-pointer"
-        title="Disponible para instalar como App"
-      >
-        <Download className="w-3.5 h-3.5 text-rose-400" />
-        <span className="hidden sm:inline">PWA Offline</span>
-      </button>
+      {/* Header Button */}
+      {isInstalled ? (
+        <div
+          id="pwa-installed-badge"
+          className="flex items-center gap-1.5 px-2 py-1 rounded-full bg-emerald-950/60 border border-emerald-800/60 text-[11px] font-medium text-emerald-400"
+          title="App instalada y funcionando 100% offline"
+        >
+          <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+          <span className="hidden sm:inline">PWA Activa</span>
+          <span className="sm:hidden font-mono text-[10px]">App</span>
+        </div>
+      ) : (
+        <button
+          id="btn-install-pwa"
+          onClick={handleInstallClick}
+          disabled={isInstalling}
+          className="flex items-center gap-1.5 px-2.5 py-1 sm:px-3 sm:py-1.5 rounded-lg bg-rose-600 hover:bg-rose-500 active:bg-rose-700 text-white text-xs font-semibold shadow-md shadow-rose-950/40 transition duration-150 cursor-pointer animate-pulse hover:animate-none"
+          title="Instalar esta aplicación en tu teléfono o computadora"
+        >
+          {isIOS ? (
+            <Smartphone className="w-3.5 h-3.5 text-rose-200 shrink-0" />
+          ) : (
+            <Download className="w-3.5 h-3.5 text-rose-200 shrink-0" />
+          )}
+          <span>Instalar</span>
+        </button>
+      )}
 
-      {showGeneralGuide && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-xs p-4">
+      {/* Floating Mobile Bottom Install Banner */}
+      {showBanner && !isInstalled && (
+        <aside
+          role="region"
+          aria-label="Aviso para instalar la aplicación en el teléfono"
+          className="fixed bottom-3 inset-x-3 sm:hidden z-50 rounded-2xl bg-slate-900/98 border border-rose-500/50 p-3.5 shadow-2xl backdrop-blur-md text-slate-100 animate-in fade-in slide-in-from-bottom duration-300"
+        >
+          <div className="flex items-start justify-between gap-3">
+            <div className="flex items-center gap-2.5">
+              <div className="flex items-center justify-center w-10 h-10 rounded-xl bg-gradient-to-br from-rose-500 to-amber-600 text-white shadow-md shadow-rose-950/50 shrink-0">
+                <ArrowDownToLine className="w-5 h-5" />
+              </div>
+              <div>
+                <h4 className="text-xs font-bold text-slate-100 leading-tight">
+                  Instalar en el Teléfono
+                </h4>
+                <p className="text-[11px] text-slate-300 leading-tight mt-0.5">
+                  Acceso directo, pantalla completa y 100% offline.
+                </p>
+              </div>
+            </div>
+            <button
+              onClick={handleDismissBanner}
+              className="p-1 text-slate-400 hover:text-slate-200 rounded-lg hover:bg-slate-800 transition cursor-pointer"
+              aria-label="Cerrar aviso"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+
+          <div className="mt-2.5 flex items-center gap-2">
+            <button
+              onClick={handleInstallClick}
+              className="flex-1 py-2 px-3 rounded-xl bg-rose-600 hover:bg-rose-500 active:bg-rose-700 text-white text-xs font-bold text-center shadow-md transition cursor-pointer flex items-center justify-center gap-1.5"
+            >
+              <Download className="w-3.5 h-3.5" />
+              <span>Instalar ahora</span>
+            </button>
+            <button
+              onClick={handleDismissBanner}
+              className="py-2 px-3 rounded-xl bg-slate-800 text-slate-300 hover:text-white text-xs font-medium transition cursor-pointer"
+            >
+              Más tarde
+            </button>
+          </div>
+        </aside>
+      )}
+
+      {/* iOS Safari Guide Modal */}
+      {showIOSGuide && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-xs p-4">
           <div className="w-full max-w-sm rounded-2xl bg-slate-900 border border-slate-700 p-5 shadow-2xl text-slate-100">
             <div className="flex items-center justify-between pb-3 border-b border-slate-800">
               <div className="flex items-center gap-2">
                 <Smartphone className="w-5 h-5 text-rose-400" />
-                <h3 className="font-semibold text-sm">Instalar Aplicación PWA</h3>
+                <h3 className="font-semibold text-sm">Instalar en iPhone / iPad</h3>
               </div>
               <button
-                onClick={() => setShowGeneralGuide(false)}
+                onClick={() => setShowIOSGuide(false)}
                 className="p-1 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800 transition cursor-pointer"
               >
                 <X className="w-4 h-4" />
@@ -136,21 +140,67 @@ export const PWAInstallButton: React.FC = () => {
             </div>
 
             <div className="mt-4 space-y-3 text-xs text-slate-300 leading-relaxed">
-              <p>
-                Para tener este POS instalado en tu dispositivo y usarlo 100% sin conexión:
-              </p>
-              <div className="p-3 rounded-xl bg-slate-800/70 border border-slate-700/70 space-y-2">
-                <p>1. Abre el menú de tu navegador (los tres puntos <strong>⋮</strong> o ícono de compartir).</p>
-                <p>2. Selecciona <strong>«Instalar aplicación»</strong> o <strong>«Agregar a la pantalla principal»</strong>.</p>
-                <p>3. Abre la aplicación desde tu pantalla de inicio.</p>
+              <div className="flex items-start gap-2.5 p-2 rounded-lg bg-slate-800/60 border border-slate-700/50">
+                <span className="flex items-center justify-center w-5 h-5 rounded-full bg-rose-500/20 text-rose-300 text-[11px] font-bold shrink-0">1</span>
+                <p>En Safari, toca el botón <strong>Compartir</strong> <Share className="w-3.5 h-3.5 inline mx-0.5 text-rose-400" /> (cuadrado con flecha hacia arriba) en la barra de navegación.</p>
+              </div>
+              <div className="flex items-start gap-2.5 p-2 rounded-lg bg-slate-800/60 border border-slate-700/50">
+                <span className="flex items-center justify-center w-5 h-5 rounded-full bg-rose-500/20 text-rose-300 text-[11px] font-bold shrink-0">2</span>
+                <p>Desplaza hacia abajo y selecciona <PlusSquare className="w-3.5 h-3.5 inline mx-0.5 text-rose-400" /> <strong>«Agregar al inicio»</strong>.</p>
+              </div>
+              <div className="flex items-start gap-2.5 p-2 rounded-lg bg-slate-800/60 border border-slate-700/50">
+                <span className="flex items-center justify-center w-5 h-5 rounded-full bg-rose-500/20 text-rose-300 text-[11px] font-bold shrink-0">3</span>
+                <p>Presiona <strong>«Agregar»</strong> en la esquina superior derecha. ¡Listo! La app aparecerá en tu pantalla de inicio.</p>
               </div>
             </div>
 
             <button
-              onClick={() => setShowGeneralGuide(false)}
+              onClick={() => setShowIOSGuide(false)}
               className="mt-5 w-full py-2.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-xs font-semibold transition cursor-pointer"
             >
-              Entendido
+              ¡Entendido!
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Android / Chrome Manual Guide Modal */}
+      {showAndroidGuide && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-xs p-4">
+          <div className="w-full max-w-sm rounded-2xl bg-slate-900 border border-slate-700 p-5 shadow-2xl text-slate-100">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+              <div className="flex items-center gap-2">
+                <Smartphone className="w-5 h-5 text-rose-400" />
+                <h3 className="font-semibold text-sm">Instalar en Android / Móvil</h3>
+              </div>
+              <button
+                onClick={() => setShowAndroidGuide(false)}
+                className="p-1 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800 transition cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="mt-4 space-y-3 text-xs text-slate-300 leading-relaxed">
+              <div className="flex items-start gap-2.5 p-2 rounded-lg bg-slate-800/60 border border-slate-700/50">
+                <span className="flex items-center justify-center w-5 h-5 rounded-full bg-rose-500/20 text-rose-300 text-[11px] font-bold shrink-0">1</span>
+                <p>Toca el menú de <strong>tres puntos ⋮</strong> en la esquina superior o inferior de tu navegador (Chrome, Samsung Internet, Edge o Firefox).</p>
+              </div>
+              <div className="flex items-start gap-2.5 p-2 rounded-lg bg-slate-800/60 border border-slate-700/50">
+                <span className="flex items-center justify-center w-5 h-5 rounded-full bg-rose-500/20 text-rose-300 text-[11px] font-bold shrink-0">2</span>
+                <p>Selecciona <ArrowDownToLine className="w-3.5 h-3.5 inline mx-0.5 text-rose-400" /> <strong>«Instalar aplicación»</strong> o <strong>«Agregar a la pantalla principal»</strong>.</p>
+              </div>
+              <div className="flex items-start gap-2.5 p-2 rounded-lg bg-slate-800/60 border border-slate-700/50">
+                <span className="flex items-center justify-center w-5 h-5 rounded-full bg-rose-500/20 text-rose-300 text-[11px] font-bold shrink-0">3</span>
+                <p>Confirma en <strong>«Instalar»</strong>. La aplicación se comportará como una app nativa en tu teléfono.</p>
+              </div>
+            </div>
+
+            <button
+              onClick={() => setShowAndroidGuide(false)}
+              className="mt-5 w-full py-2.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-xs font-semibold transition cursor-pointer"
+            >
+              ¡Entendido!
             </button>
           </div>
         </div>

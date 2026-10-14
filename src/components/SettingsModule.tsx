@@ -20,7 +20,12 @@ import {
   Mail,
   Send,
   HardDrive,
+  Share,
+  PlusSquare,
+  ArrowDownToLine,
+  X,
 } from 'lucide-react';
+import { usePWAInstall } from '../hooks/usePWAInstall';
 import { AppSettings } from '../types';
 import { VENEZUELAN_BANKS } from '../data/initialData';
 import {
@@ -69,6 +74,11 @@ export const SettingsModule: React.FC<SettingsModuleProps> = ({
   // Camera test modal state
   const [isTestScannerOpen, setIsTestScannerOpen] = useState(false);
   const [testScannedResult, setTestScannedResult] = useState<string | null>(null);
+
+  // PWA mobile installation status & actions
+  const { isInstallable, isInstalled, isIOS, isAndroid, install } = usePWAInstall();
+  const [showPwaGuideModal, setShowPwaGuideModal] = useState(false);
+  const [guidePlatform, setGuidePlatform] = useState<'android' | 'ios'>('android');
 
   // When bank code changes, set appropriate bank name
   const handleBankChange = (code: string) => {
@@ -690,6 +700,207 @@ export const SettingsModule: React.FC<SettingsModuleProps> = ({
           </div>
         )}
       </div>
+
+      {/* 6. Instalación en Teléfono Móvil (PWA 100% Instalable y Offline) */}
+      <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-lg space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-800">
+          <div>
+            <h3 className="text-sm sm:text-base font-bold text-slate-100 flex items-center gap-2">
+              <Smartphone className="w-4 h-4 text-rose-400" />
+              <span>Instalación en Teléfono Móvil (PWA App)</span>
+            </h3>
+            <p className="text-xs text-slate-400">
+              Instala Charcutería Jhojan POS directamente en tu celular o tablet para usarla a pantalla completa y 100% sin conexión a internet.
+            </p>
+          </div>
+
+          <div className="flex items-center gap-2">
+            {isInstalled ? (
+              <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-950/80 border border-emerald-800/80 text-emerald-400 text-xs font-semibold">
+                <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+                <span>Instalada como App</span>
+              </div>
+            ) : isInstallable ? (
+              <button
+                type="button"
+                onClick={async () => {
+                  await install();
+                }}
+                className="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 active:bg-rose-700 text-white font-bold text-xs flex items-center gap-2 transition shadow-md shadow-rose-950/40 cursor-pointer animate-pulse hover:animate-none"
+              >
+                <Download className="w-4 h-4" />
+                <span>Instalar App Ahora</span>
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={() => {
+                  setGuidePlatform(isIOS ? 'ios' : 'android');
+                  setShowPwaGuideModal(true);
+                }}
+                className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold text-xs flex items-center gap-2 transition border border-slate-700 cursor-pointer"
+              >
+                <Smartphone className="w-4 h-4 text-rose-400" />
+                <span>Cómo Instalar en Teléfono</span>
+              </button>
+            )}
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
+          <div className="p-3.5 rounded-xl bg-slate-950 border border-slate-800 space-y-1.5">
+            <div className="flex items-center gap-2 text-slate-200 font-semibold">
+              <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+              <span>100% Sin Conexión (Offline)</span>
+            </div>
+            <p className="text-slate-400 text-[11px] leading-relaxed">
+              Todos los tickets, clientes, productos, tasas de cambio y fiados quedan guardados en la memoria del dispositivo. Funciona sin cobertura celular ni WiFi.
+            </p>
+          </div>
+
+          <div className="p-3.5 rounded-xl bg-slate-950 border border-slate-800 space-y-1.5">
+            <div className="flex items-center gap-2 text-slate-200 font-semibold">
+              <ArrowDownToLine className="w-4 h-4 text-rose-400" />
+              <span>Acceso Rápido en Pantalla</span>
+            </div>
+            <p className="text-slate-400 text-[11px] leading-relaxed">
+              Añade el ícono oficial de Charcutería Jhojan POS a la pantalla principal de tu teléfono. Ábrelo al instante sin escribir URL ni depender de pestañas.
+            </p>
+          </div>
+
+          <div className="p-3.5 rounded-xl bg-slate-950 border border-slate-800 space-y-1.5">
+            <div className="flex items-center gap-2 text-slate-200 font-semibold">
+              <Sparkles className="w-4 h-4 text-amber-400" />
+              <span>Pantalla Completa Inmersiva</span>
+            </div>
+            <p className="text-slate-400 text-[11px] leading-relaxed">
+              Elimina las barras del navegador para aprovechar cada milímetro de pantalla al pesar artículos, digitar gramajes o registrar pagos móviles.
+            </p>
+          </div>
+        </div>
+
+        {/* Quick instructions preview */}
+        <div className="p-3.5 rounded-xl bg-slate-950/70 border border-slate-800/80 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+          <div className="space-y-1">
+            <span className="font-semibold text-slate-200">Guías rápidas de instalación por sistema operativo:</span>
+            <p className="text-[11px] text-slate-400">
+              Compatible con Android (Chrome, Samsung Internet, Edge, Brave, Opera) y iPhone / iPad (Safari).
+            </p>
+          </div>
+          <div className="flex items-center gap-2 shrink-0">
+            <button
+              type="button"
+              onClick={() => {
+                setGuidePlatform('android');
+                setShowPwaGuideModal(true);
+              }}
+              className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-medium border border-slate-700 transition cursor-pointer"
+            >
+              Guía Android
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setGuidePlatform('ios');
+                setShowPwaGuideModal(true);
+              }}
+              className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-medium border border-slate-700 transition cursor-pointer"
+            >
+              Guía iPhone (iOS)
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* PWA Phone Installation Guide Modal */}
+      {showPwaGuideModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-xs p-4">
+          <div className="w-full max-w-md rounded-2xl bg-slate-900 border border-slate-700 p-5 shadow-2xl text-slate-100">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+              <div className="flex items-center gap-2">
+                <Smartphone className="w-5 h-5 text-rose-400" />
+                <h3 className="font-semibold text-sm">
+                  {guidePlatform === 'android' ? 'Instalación en Teléfono Android' : 'Instalación en iPhone / iPad (iOS)'}
+                </h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowPwaGuideModal(false)}
+                className="p-1 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800 transition cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Platform Switcher Tabs */}
+            <div className="flex items-center gap-2 mt-4 p-1 bg-slate-950 rounded-xl border border-slate-800 text-xs font-medium">
+              <button
+                type="button"
+                onClick={() => setGuidePlatform('android')}
+                className={`flex-1 py-1.5 rounded-lg transition cursor-pointer ${
+                  guidePlatform === 'android'
+                    ? 'bg-rose-600 text-white font-bold shadow-xs'
+                    : 'text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                Android (Chrome)
+              </button>
+              <button
+                type="button"
+                onClick={() => setGuidePlatform('ios')}
+                className={`flex-1 py-1.5 rounded-lg transition cursor-pointer ${
+                  guidePlatform === 'ios'
+                    ? 'bg-rose-600 text-white font-bold shadow-xs'
+                    : 'text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                iPhone (Safari)
+              </button>
+            </div>
+
+            {/* Platform Instructions */}
+            {guidePlatform === 'android' ? (
+              <div className="mt-4 space-y-3 text-xs text-slate-300 leading-relaxed">
+                <div className="flex items-start gap-2.5 p-2.5 rounded-xl bg-slate-800/60 border border-slate-700/50">
+                  <span className="flex items-center justify-center w-6 h-6 rounded-full bg-rose-500/20 text-rose-300 text-xs font-bold shrink-0">1</span>
+                  <p>Abre el menú de tu navegador tocando los <strong>tres puntos ⋮</strong> en la esquina superior derecha de Google Chrome o Samsung Internet.</p>
+                </div>
+                <div className="flex items-start gap-2.5 p-2.5 rounded-xl bg-slate-800/60 border border-slate-700/50">
+                  <span className="flex items-center justify-center w-6 h-6 rounded-full bg-rose-500/20 text-rose-300 text-xs font-bold shrink-0">2</span>
+                  <p>Busca la opción <ArrowDownToLine className="w-3.5 h-3.5 inline mx-0.5 text-rose-400" /> <strong>«Instalar aplicación»</strong> o <strong>«Agregar a la pantalla principal»</strong>.</p>
+                </div>
+                <div className="flex items-start gap-2.5 p-2.5 rounded-xl bg-slate-800/60 border border-slate-700/50">
+                  <span className="flex items-center justify-center w-6 h-6 rounded-full bg-rose-500/20 text-rose-300 text-xs font-bold shrink-0">3</span>
+                  <p>Presiona <strong>«Instalar»</strong> en la confirmación. El icono de Charcutería Jhojan POS se creará en tu pantalla de inicio.</p>
+                </div>
+              </div>
+            ) : (
+              <div className="mt-4 space-y-3 text-xs text-slate-300 leading-relaxed">
+                <div className="flex items-start gap-2.5 p-2.5 rounded-xl bg-slate-800/60 border border-slate-700/50">
+                  <span className="flex items-center justify-center w-6 h-6 rounded-full bg-rose-500/20 text-rose-300 text-xs font-bold shrink-0">1</span>
+                  <p>En el navegador <strong>Safari</strong> de tu iPhone o iPad, presiona el botón <Share className="w-3.5 h-3.5 inline mx-0.5 text-rose-400" /> <strong>Compartir</strong> (rectángulo con flecha hacia arriba) en la barra inferior.</p>
+                </div>
+                <div className="flex items-start gap-2.5 p-2.5 rounded-xl bg-slate-800/60 border border-slate-700/50">
+                  <span className="flex items-center justify-center w-6 h-6 rounded-full bg-rose-500/20 text-rose-300 text-xs font-bold shrink-0">2</span>
+                  <p>Baja en las opciones del menú y selecciona <PlusSquare className="w-3.5 h-3.5 inline mx-0.5 text-rose-400" /> <strong>«Agregar al inicio»</strong>.</p>
+                </div>
+                <div className="flex items-start gap-2.5 p-2.5 rounded-xl bg-slate-800/60 border border-slate-700/50">
+                  <span className="flex items-center justify-center w-6 h-6 rounded-full bg-rose-500/20 text-rose-300 text-xs font-bold shrink-0">3</span>
+                  <p>Pulsa <strong>«Agregar»</strong> en la esquina superior derecha. ¡Listo! Abre el POS como una app independiente a pantalla completa.</p>
+                </div>
+              </div>
+            )}
+
+            <button
+              type="button"
+              onClick={() => setShowPwaGuideModal(false)}
+              className="mt-5 w-full py-2.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-xs font-semibold transition cursor-pointer"
+            >
+              ¡Entendido!
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Test Scanner Modal */}
       <CameraScannerModal

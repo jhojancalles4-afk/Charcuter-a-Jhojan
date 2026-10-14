@@ -1,0 +1,58 @@
+{
+  "id": "/",
+  "name": "Charcutería Jhojan POS",
+  "short_name": "Jhojan POS",
+  "description": "Sistema PWA de Punto de Venta bimonetario (USD/Bs.) y libro de fiados con cobranzas por WhatsApp para Charcutería Jhojan C.A.",
+  "theme_color": "#0f172a",
+  "background_color": "#0f172a",
+  "display": "standalone",
+  "orientation": "any",
+  "start_url": "/",
+  "scope": "/",
+  "lang": "es",
+  "dir": "ltr",
+  "categories": ["business", "finance", "productivity", "utilities"],
+  "icons": [
+    {
+      "src": "/pwa-192x192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/pwa-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/pwa-maskable-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Punto de Venta",
+      "short_name": "POS",
+      "description": "Abrir módulo de caja y facturación",
+      "url": "/?tab=pos",
+      "icons": [{ "src": "/pwa-192x192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "Libro de Fiados",
+      "short_name": "Fiados",
+      "description": "Ver deudores y cobranzas por WhatsApp",
+      "url": "/?tab=fiados",
+      "icons": [{ "src": "/pwa-192x192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "Inventario",
+      "short_name": "Stock",
+      "description": "Consultar existencias y productos",
+      "url": "/?tab=inventory",
+      "icons": [{ "src": "/pwa-192x192.png", "sizes": "192x192" }]
+    }
+  ]
+}

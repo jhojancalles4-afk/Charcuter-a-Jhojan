@@ -32,7 +32,15 @@ import { CheckCircle, AlertCircle } from 'lucide-react';
 import { voidOrDeleteTicket } from './services/storage';
 
 export default function App() {
-  const [activeTab, setActiveTab] = useState<'pos' | 'tickets' | 'fiados' | 'inventory' | 'settings'>('pos');
+  const [activeTab, setActiveTab] = useState<'pos' | 'tickets' | 'fiados' | 'inventory' | 'settings'>(() => {
+    if (typeof window !== 'undefined') {
+      const tabParam = new URLSearchParams(window.location.search).get('tab');
+      if (tabParam === 'pos' || tabParam === 'tickets' || tabParam === 'fiados' || tabParam === 'inventory' || tabParam === 'settings') {
+        return tabParam;
+      }
+    }
+    return 'pos';
+  });
   const [products, setProducts] = useState<Product[]>(() => loadProducts());
   const [tickets, setTickets] = useState<SaleTicket[]>(() => loadTickets());
   const [expenses, setExpenses] = useState<ExpenseRecord[]>(() => loadExpenses());
