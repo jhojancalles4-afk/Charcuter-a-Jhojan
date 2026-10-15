@@ -3,6 +3,8 @@ import {
   DebtorCustomer,
   ExpenseRecord,
   InventoryReportSummary,
+  MermaRecord,
+  MermaReason,
   PaymentAbono,
   Product,
   RestockAbono,
@@ -16,6 +18,7 @@ import {
 } from '../types';
 import {
   INITIAL_EXPENSES,
+  INITIAL_MERMAS,
   INITIAL_PRODUCTS,
   INITIAL_RESTOCKS,
   INITIAL_SETTINGS,
@@ -35,6 +38,7 @@ const STORAGE_KEYS = {
   TICKETS: 'jhojan_pos_tickets_v1',
   EXPENSES: 'jhojan_pos_expenses_v1',
   RESTOCKS: 'jhojan_pos_restocks_v1',
+  MERMAS: 'jhojan_pos_mermas_v1',
   SYNC_QUEUE: 'jhojan_pos_sync_queue_v1',
   GOOGLE_ACCOUNT: 'jhojan_pos_google_account_v1',
   GOOGLE_DAILY_BACKUPS: 'jhojan_pos_google_daily_backups_v1',
@@ -167,6 +171,122 @@ export function saveRestocks(restocks: RestockRecord[]): void {
   } catch (e) {
     console.error('Error saving restocks to localStorage', e);
   }
+}
+
+// --- Mermas Físicas & Desperdicios por Manipulación ---
+export function loadMermas(): MermaRecord[] {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEYS.MERMAS);
+    if (!raw) return INITIAL_MERMAS;
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : INITIAL_MERMAS;
+  } catch (e) {
+    console.error('Error loading mermas from localStorage', e);
+    return INITIAL_MERMAS;
+  }
+}
+
+export function saveMermas(mermas: MermaRecord[]): void {
+  try {
+    localStorage.setItem(STORAGE_KEYS.MERMAS, JSON.stringify(mermas));
+    notifyStorageChange('mermas');
+  } catch (e) {
+    console.error('Error saving mermas to localStorage', e);
+  }
+}
+
+export interface ProcessMermaInput {
+  productId: string;
+  quantity: number;
+  reason: MermaReason;
+  notes?: string;
+  performedBy?: string;
+}
+
+export function processNewMerma(
+  input: ProcessMermaInput,
+  products: Product[],
+  mermas: MermaRecord[],
+  settings: AppSettings
+): {
+  updatedProducts: Product[];
+  updatedMermas: MermaRecord[];
+  newMerma: MermaRecord;
+} {
+  const targetProduct = products.find((p) => p.id === input.productId);
+  if (!targetProduct) {
+    throw new Error('Producto no encontrado para registrar la merma');
+  }
+
+  const cleanQty = Math.max(0.001, Math.round(input.quantity * 1000) / 1000);
+  const unitCostUSD = targetProduct.costUSD && targetProduct.costUSD > 0
+    ? targetProduct.costUSD
+    : Math.round(targetProduct.priceUSD * 0.65 * 100) / 100;
+
+  const totalCostUSD = Math.round(cleanQty * unitCostUSD * 100) / 100;
+  const totalCostVES = Math.round(totalCostUSD * settings.bcvRate * 100) / 100;
+
+  // Deduct from product stock
+  const newStock = Math.max(0, Math.round((targetProduct.stock - cleanQty) * 1000) / 1000);
+  const updatedProducts = products.map((p) =>
+    p.id === input.productId ? { ...p, stock: newStock } : p
+  );
+
+  const newMerma: MermaRecord = {
+    id: `MERMA-${Date.now()}`,
+    date: new Date().toISOString(),
+    productId: targetProduct.id,
+    productName: targetProduct.name,
+    category: targetProduct.category,
+    unit: targetProduct.unit,
+    quantity: cleanQty,
+    unitCostUSD,
+    totalCostUSD,
+    totalCostVES,
+    bcvRate: settings.bcvRate,
+    reason: input.reason,
+    notes: input.notes?.trim() || undefined,
+    performedBy: input.performedBy?.trim() || 'Encargado de Charcutería',
+  };
+
+  const updatedMermas = [newMerma, ...mermas];
+
+  saveProducts(updatedProducts);
+  saveMermas(updatedMermas);
+
+  return {
+    updatedProducts,
+    updatedMermas,
+    newMerma,
+  };
+}
+
+export function deleteMermaRecord(
+  mermaId: string,
+  restoreStock: boolean,
+  products: Product[],
+  mermas: MermaRecord[]
+): { updatedProducts: Product[]; updatedMermas: MermaRecord[] } {
+  const target = mermas.find((m) => m.id === mermaId);
+  let updatedProducts = [...products];
+
+  if (target && restoreStock) {
+    updatedProducts = updatedProducts.map((p) => {
+      if (p.id === target.productId) {
+        return {
+          ...p,
+          stock: Math.round((p.stock + target.quantity) * 1000) / 1000,
+        };
+      }
+      return p;
+    });
+    saveProducts(updatedProducts);
+  }
+
+  const updatedMermas = mermas.filter((m) => m.id !== mermaId);
+  saveMermas(updatedMermas);
+
+  return { updatedProducts, updatedMermas };
 }
 
 export interface ProcessRestockInput {
@@ -708,15 +828,25 @@ export function amortizeCustomerPayment(
   let remainingUSD = abonoUSD;
   const now = new Date().toISOString();
 
+  const targetDigits = customerPhoneOrCedula.replace(/[^0-9]/g, '');
+  const targetNorm = customerPhoneOrCedula.trim().toLowerCase();
+
   // Find tickets for this customer that are pending or partially_paid
   const customerTickets = allTickets
     .filter((t) => {
-      const matchPhone = t.customerPhone && t.customerPhone.trim() === customerPhoneOrCedula.trim();
+      const ticketPhoneDigits = t.customerPhone ? t.customerPhone.replace(/[^0-9]/g, '') : '';
+      const matchPhone =
+        (t.customerPhone && t.customerPhone.trim() === customerPhoneOrCedula.trim()) ||
+        (targetDigits.length >= 7 && ticketPhoneDigits.length >= 7 && (ticketPhoneDigits === targetDigits || ticketPhoneDigits.endsWith(targetDigits) || targetDigits.endsWith(ticketPhoneDigits)));
+      
+      const ticketCedulaClean = t.customerCedula ? t.customerCedula.replace(/[^0-9a-zA-Z]/g, '').toLowerCase() : '';
+      const targetCedulaClean = customerPhoneOrCedula.replace(/[^0-9a-zA-Z]/g, '').toLowerCase();
       const matchCedula =
         customerPhoneOrCedula.trim().toUpperCase() !== 'V-00000000' &&
-        t.customerCedula &&
-        t.customerCedula.trim() === customerPhoneOrCedula.trim();
-      const matchName = t.customerName && t.customerName.trim().toLowerCase() === customerPhoneOrCedula.trim().toLowerCase();
+        ticketCedulaClean &&
+        ticketCedulaClean === targetCedulaClean;
+
+      const matchName = t.customerName && t.customerName.trim().toLowerCase() === targetNorm;
       const isUnpaid = (t.status === 'pending' || t.status === 'partially_paid') && t.pendingUSD > 0.001;
       return (matchPhone || matchCedula || matchName) && isUnpaid;
     })
@@ -838,14 +968,26 @@ export function deleteDebtorAccount(
   allProducts: Product[]
 ): { updatedTickets: SaleTicket[]; updatedProducts: Product[] } {
   const normKey = customerKey.trim().toLowerCase();
+  const keyDigits = customerKey.replace(/[^0-9]/g, '');
+
+  const isMatchingTicket = (t: SaleTicket) => {
+    if (t.isVoided) return false;
+    const ticketPhoneDigits = t.customerPhone ? t.customerPhone.replace(/[^0-9]/g, '') : '';
+    const matchPhone =
+      (t.customerPhone && t.customerPhone.trim().toLowerCase() === normKey) ||
+      (keyDigits.length >= 7 && ticketPhoneDigits.length >= 7 && (ticketPhoneDigits === keyDigits || ticketPhoneDigits.endsWith(keyDigits) || keyDigits.endsWith(ticketPhoneDigits)));
+    
+    const ticketCedulaClean = t.customerCedula ? t.customerCedula.replace(/[^0-9a-zA-Z]/g, '').toLowerCase() : '';
+    const keyCedulaClean = customerKey.replace(/[^0-9a-zA-Z]/g, '').toLowerCase();
+    const matchCedula =
+      normKey !== 'v-00000000' && normKey !== '0' && ticketCedulaClean && ticketCedulaClean === keyCedulaClean;
+
+    const matchName = t.customerName && t.customerName.trim().toLowerCase() === normKey;
+    return matchPhone || matchCedula || matchName;
+  };
 
   // Find all tickets associated with this debtor that are unpaid/fiado
-  const debtorTickets = allTickets.filter((t) => {
-    const matchPhone = t.customerPhone && t.customerPhone.trim().toLowerCase() === normKey;
-    const matchCedula = t.customerCedula && t.customerCedula.trim().toLowerCase() === normKey;
-    const matchName = t.customerName && t.customerName.trim().toLowerCase() === normKey;
-    return (matchPhone || matchCedula || matchName) && !t.isVoided;
-  });
+  const debtorTickets = allTickets.filter((t) => isMatchingTicket(t));
 
   let updatedProducts = [...allProducts];
   if (restoreInventory) {
@@ -875,10 +1017,7 @@ export function deleteDebtorAccount(
 
   // Mark all debtor tickets as voided or delete them
   const updatedTickets = allTickets.map((t) => {
-    const matchPhone = t.customerPhone && t.customerPhone.trim().toLowerCase() === normKey;
-    const matchCedula = t.customerCedula && t.customerCedula.trim().toLowerCase() === normKey;
-    const matchName = t.customerName && t.customerName.trim().toLowerCase() === normKey;
-    if ((matchPhone || matchCedula || matchName) && (t.status === 'pending' || t.status === 'partially_paid')) {
+    if (isMatchingTicket(t) && (t.status === 'pending' || t.status === 'partially_paid')) {
       return {
         ...t,
         isVoided: true,
@@ -907,6 +1046,7 @@ export function exportDatabaseBackupString(): string {
     tickets: loadTickets(),
     expenses: loadExpenses(),
     restocks: loadRestocks(),
+    mermas: loadMermas(),
     fidelis: loadFidelisProfiles(),
   };
   return JSON.stringify(data, null, 2);
@@ -948,6 +1088,9 @@ export function importDatabaseBackup(jsonString: string): { success: boolean; me
     if (Array.isArray(data.restocks)) {
       saveRestocks(data.restocks);
     }
+    if (Array.isArray(data.mermas)) {
+      saveMermas(data.mermas);
+    }
     // Carga de facturas: Buscar a quién le corresponde cada compra y sumar los sellos
     const baseFidelis = data.fidelis && typeof data.fidelis === 'object' ? data.fidelis : {};
     const syncResult = syncAndSumTicketsToFidelis(data.tickets, baseFidelis, {
@@ -957,7 +1100,7 @@ export function importDatabaseBackup(jsonString: string): { success: boolean; me
 
     return {
       success: true,
-      message: `Respaldo restaurado exitosamente: ${data.products.length} productos, ${data.tickets.length} tickets, ${data.expenses?.length || 0} egresos, ${data.restocks?.length || 0} reposiciones de proveedores y perfiles Fidelis actualizados (+${syncResult.totalStampsAdded} sellos sumados a ${syncResult.matchedCustomersCount} clientes).`,
+      message: `Respaldo restaurado exitosamente: ${data.products.length} productos, ${data.tickets.length} tickets, ${data.expenses?.length || 0} egresos, ${data.restocks?.length || 0} compras a proveedores, ${data.mermas?.length || 0} mermas y perfiles Fidelis actualizados (+${syncResult.totalStampsAdded} sellos sumados a ${syncResult.matchedCustomersCount} clientes).`,
     };
   } catch (err) {
     console.error('Error importing backup:', err);
@@ -1690,7 +1833,8 @@ export function buildSystemPandLReport(
   settings: AppSettings,
   period: ZReportPeriodFilter = 'month',
   customStart?: string,
-  customEnd?: string
+  customEnd?: string,
+  mermas?: MermaRecord[]
 ): SystemPandLData {
   const now = new Date();
   let startMs = 0;
@@ -1972,14 +2116,50 @@ export function buildSystemPandLReport(
     count: data.count,
   }));
 
+  // 3b. Mermas Físicas y Desperdicios por Manipulación en el periodo
+  const actualMermas = mermas && mermas.length > 0 ? mermas : loadMermas();
+  const periodMermas = actualMermas.filter((m) => {
+    const ms = new Date(m.date).getTime();
+    return ms >= startMs && ms <= endMs;
+  });
+
+  let totalMermaCostUSD = 0;
+  let totalMermaWeightKG = 0;
+  let totalMermaUnitsUN = 0;
+  const mermaReasonMap = new Map<MermaReason, { totalUSD: number; count: number; weightKG: number }>();
+
+  for (const m of periodMermas) {
+    totalMermaCostUSD += m.totalCostUSD;
+    if (m.unit === 'KG') {
+      totalMermaWeightKG += m.quantity;
+    } else {
+      totalMermaUnitsUN += m.quantity;
+    }
+    const curr = mermaReasonMap.get(m.reason) || { totalUSD: 0, count: 0, weightKG: 0 };
+    curr.totalUSD += m.totalCostUSD;
+    curr.count++;
+    if (m.unit === 'KG') curr.weightKG += m.quantity;
+    mermaReasonMap.set(m.reason, curr);
+  }
+
+  totalMermaCostUSD = Math.round(totalMermaCostUSD * 100) / 100;
+  const totalMermaCostVES = Math.round(totalMermaCostUSD * settings.bcvRate * 100) / 100;
+  const mermasBreakdown = Array.from(mermaReasonMap.entries()).map(([reason, d]) => ({
+    reason,
+    totalUSD: Math.round(d.totalUSD * 100) / 100,
+    totalVES: Math.round(d.totalUSD * settings.bcvRate * 100) / 100,
+    count: d.count,
+    weightKG: Math.round(d.weightKG * 1000) / 1000,
+  }));
+
   // 4. Utilidad Bruta = Ventas Totales - Costo de Mercancía Vendida
   const grossProfitUSD = Math.round((totalSalesUSD - costOfGoodsSoldUSD) * 100) / 100;
   const grossProfitVES = Math.round((totalSalesVES - costOfGoodsSoldVES) * 100) / 100;
   const grossMarginPercent = totalSalesUSD > 0 ? Math.round((grossProfitUSD / totalSalesUSD) * 1000) / 10 : 0;
 
-  // 5. Ganancia o Pérdida Neta = Utilidad Bruta - Gastos Operativos
-  const netProfitUSD = Math.round((grossProfitUSD - operatingExpensesUSD) * 100) / 100;
-  const netProfitVES = Math.round((grossProfitVES - operatingExpensesVES) * 100) / 100;
+  // 5. Ganancia o Pérdida Neta Real = Utilidad Bruta - Gastos Operativos - Mermas Físicas
+  const netProfitUSD = Math.round((grossProfitUSD - operatingExpensesUSD - totalMermaCostUSD) * 100) / 100;
+  const netProfitVES = Math.round((grossProfitVES - operatingExpensesVES - totalMermaCostVES) * 100) / 100;
   const netMarginPercent = totalSalesUSD > 0 ? Math.round((netProfitUSD / totalSalesUSD) * 1000) / 10 : 0;
   const isProfit = netProfitUSD >= 0;
 
@@ -2059,6 +2239,13 @@ export function buildSystemPandLReport(
     netMarginPercent,
     isProfit,
 
+    totalMermaCostUSD,
+    totalMermaCostVES,
+    totalMermaWeightKG: Math.round(totalMermaWeightKG * 1000) / 1000,
+    totalMermaUnitsUN,
+    mermasCount: periodMermas.length,
+    mermasBreakdown,
+
     currentAccountsReceivableUSD: Math.round(currentAccountsReceivableUSD * 100) / 100,
     currentAccountsReceivableVES,
     currentAccountsPayableUSD: Math.round(currentAccountsPayableUSD * 100) / 100,
@@ -2100,8 +2287,11 @@ export function generateWhatsAppPandLReport(
     `• Costo de Mercancía Vendida (COGS): -${formatUSD(report.costOfGoodsSoldUSD)}`,
     `• *UTILIDAD BRUTA: ${formatUSD(report.grossProfitUSD)}* (Margen: ${report.grossMarginPercent}%)`,
     `----------------------------------------`,
-    `📉 *GASTOS OPERATIVOS DEDUCIDOS:*`,
+    `📉 *GASTOS Y MERMAS DEDUCIDOS:*`,
     `• Total Gastos Operativos: -${formatUSD(report.operatingExpensesUSD)}`,
+    report.totalMermaCostUSD > 0
+      ? `• 🧀 Mermas Físicas / Manipulación: -${formatUSD(report.totalMermaCostUSD)} (${report.totalMermaWeightKG.toFixed(3)} kg, ${report.mermasCount} reg.)`
+      : null,
     `----------------------------------------`,
     `🏆 *RESULTADO FINAL NETO:*`,
     resultHeader,
@@ -2125,6 +2315,277 @@ export function generateWhatsAppPandLReport(
   const url = `https://wa.me/${cleanPhone}?text=${encoded}`;
 
   return { url, message };
+}
+
+// --- EXPORTACIÓN A EXCEL / CSV PARA CONTABILIDAD EXTERNA ---
+
+function downloadCSVFile(filename: string, csvContent: string): void {
+  // \uFEFF es el BOM de UTF-8 que obliga a Microsoft Excel a abrir con tildes y caracteres en español correctamente
+  const blob = new Blob(['\uFEFF' + csvContent], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+function escapeCSVField(value: any): string {
+  if (value === null || value === undefined) return '""';
+  const str = String(value).replace(/"/g, '""');
+  return `"${str}"`;
+}
+
+/**
+ * Exporta el libro de ventas (facturas y tickets) a formato CSV compatible con Microsoft Excel.
+ */
+export function exportTicketsToCSV(
+  tickets: SaleTicket[],
+  settings: AppSettings,
+  periodLabel = 'historico'
+): void {
+  const headers = [
+    'Nro Ticket',
+    'Fecha',
+    'Hora',
+    'Cliente',
+    'Cedula',
+    'Telefono',
+    'Metodo de Pago',
+    'Estado',
+    'Total USD',
+    'Tasa BCV',
+    'Total VES',
+    'Cobrado USD',
+    'Saldo Pendiente USD',
+    'Cant. Articulos',
+    'Detalle de Productos y Gramajes',
+    'Notas / Motivo Anulacion',
+  ];
+
+  const methodTranslations: Record<string, string> = {
+    cash_usd: 'Efectivo USD ($)',
+    cash_ves: 'Efectivo Bs.',
+    punto: 'Punto de Venta',
+    pago_movil: 'Pago Movil',
+    fiado: 'Fiado (Credito)',
+    mixed: 'Pago Mixto (Combinado)',
+  };
+
+  const statusTranslations: Record<string, string> = {
+    paid: 'Cobrado',
+    pending: 'Pendiente (Fiado)',
+    partially_paid: 'Abonado Parcial',
+    voided: 'ANULADO',
+  };
+
+  const rows = tickets.map((t) => {
+    const d = new Date(t.date);
+    const dateStr = d.toLocaleDateString('es-VE');
+    const timeStr = d.toLocaleTimeString('es-VE', { hour: '2-digit', minute: '2-digit' });
+
+    const itemsSummary = t.items
+      .map(
+        (i) =>
+          `${i.product.name} (${i.product.unit === 'KG' ? `${i.quantity.toFixed(3)} KG` : `${i.quantity} UN`} @ $${i.unitPriceUSD.toFixed(2)})`
+      )
+      .join('; ');
+
+    const totalAbonado = (t.abonos || []).reduce((sum, a) => sum + a.amountUSD, 0);
+    const cobradoUSD = t.status === 'paid' ? t.totalUSD : totalAbonado;
+
+    return [
+      escapeCSVField(t.ticketNumber),
+      escapeCSVField(dateStr),
+      escapeCSVField(timeStr),
+      escapeCSVField(t.customerName),
+      escapeCSVField(t.customerCedula),
+      escapeCSVField(t.customerPhone),
+      escapeCSVField(methodTranslations[t.paymentMethod] || t.paymentMethod),
+      escapeCSVField(t.isVoided ? 'ANULADO' : statusTranslations[t.status] || t.status),
+      escapeCSVField(t.totalUSD.toFixed(2)),
+      escapeCSVField(t.bcvRate.toFixed(2)),
+      escapeCSVField(t.totalVES.toFixed(2)),
+      escapeCSVField(cobradoUSD.toFixed(2)),
+      escapeCSVField((t.pendingUSD || 0).toFixed(2)),
+      escapeCSVField(t.items.length),
+      escapeCSVField(itemsSummary),
+      escapeCSVField(t.isVoided ? `ANULADO: ${t.voidReason || 'Sin motivo'}` : t.notes || ''),
+    ].join(';');
+  });
+
+  const csvContent = [headers.join(';'), ...rows].join('\r\n');
+  const cleanPeriod = periodLabel.toLowerCase().replace(/[^a-z0-9]/g, '-');
+  const dateStr = new Date().toISOString().slice(0, 10);
+  downloadCSVFile(`ventas-charcuteria-jhojan-${cleanPeriod}-${dateStr}.csv`, csvContent);
+}
+
+/**
+ * Exporta el libro de deudores y cuentas por cobrar a formato CSV compatible con Microsoft Excel.
+ */
+export function exportDebtorsToCSV(
+  debtors: DebtorCustomer[],
+  settings: AppSettings
+): void {
+  const headers = [
+    'Nombre del Cliente',
+    'Cedula',
+    'Telefono',
+    'Total Deuda USD',
+    'Tasa BCV',
+    'Total Deuda VES',
+    'Tickets Pendientes',
+    'Ultima Compra',
+    'Numeros de Ticket Asociados',
+  ];
+
+  const rows = debtors.map((d) => {
+    const ticketNums = d.tickets.map((t) => `#${t.ticketNumber}`).join(', ');
+    const lastDate = d.lastPurchaseDate
+      ? new Date(d.lastPurchaseDate).toLocaleDateString('es-VE')
+      : 'N/A';
+
+    return [
+      escapeCSVField(d.name),
+      escapeCSVField(d.cedula),
+      escapeCSVField(d.phone),
+      escapeCSVField(d.totalDebtUSD.toFixed(2)),
+      escapeCSVField(settings.bcvRate.toFixed(2)),
+      escapeCSVField(d.totalDebtVES.toFixed(2)),
+      escapeCSVField(d.tickets.length),
+      escapeCSVField(lastDate),
+      escapeCSVField(ticketNums),
+    ].join(';');
+  });
+
+  const csvContent = [headers.join(';'), ...rows].join('\r\n');
+  const dateStr = new Date().toISOString().slice(0, 10);
+  downloadCSVFile(`libro-deudores-fiados-${dateStr}.csv`, csvContent);
+}
+
+/**
+ * Exporta el catálogo completo de productos, costos, márgenes y valor de inventario a CSV / Excel.
+ */
+export function exportInventoryToCSV(
+  products: Product[],
+  settings: AppSettings
+): void {
+  const headers = [
+    'Codigo',
+    'Codigo de Barras',
+    'Producto',
+    'Categoria',
+    'Unidad',
+    'Stock Actual',
+    'Costo Unitario USD',
+    'Precio Venta USD',
+    'Margen Utilidad %',
+    'Precio en Bs (BCV)',
+    'Valor Stock a Costo USD',
+    'Valor Stock a Venta USD',
+    'Ganancia Potencial USD',
+    'Alerta Stock Minimo',
+    'Estado Stock',
+  ];
+
+  const rows = products.map((p) => {
+    const cost = p.costUSD || Math.round(p.priceUSD * 0.72 * 100) / 100;
+    const margin = p.marginPercent || Math.round(((p.priceUSD - cost) / cost) * 1000) / 10;
+    const stockValCost = Math.round(p.stock * cost * 100) / 100;
+    const stockValRetail = Math.round(p.stock * p.priceUSD * 100) / 100;
+    const potentialProfit = Math.round((stockValRetail - stockValCost) * 100) / 100;
+    const priceVES = Math.round(p.priceUSD * settings.bcvRate * 100) / 100;
+    const isLow = p.stock <= (p.minStockAlert || 3);
+
+    return [
+      escapeCSVField(p.code || ''),
+      escapeCSVField(p.barcode || ''),
+      escapeCSVField(p.name),
+      escapeCSVField(p.category),
+      escapeCSVField(p.unit),
+      escapeCSVField(p.unit === 'KG' ? p.stock.toFixed(3) : p.stock.toString()),
+      escapeCSVField(cost.toFixed(2)),
+      escapeCSVField(p.priceUSD.toFixed(2)),
+      escapeCSVField(`${margin.toFixed(1)}%`),
+      escapeCSVField(priceVES.toFixed(2)),
+      escapeCSVField(stockValCost.toFixed(2)),
+      escapeCSVField(stockValRetail.toFixed(2)),
+      escapeCSVField(potentialProfit.toFixed(2)),
+      escapeCSVField(p.minStockAlert || 3),
+      escapeCSVField(isLow ? 'ALERTA: BAJO STOCK' : 'Normal'),
+    ].join(';');
+  });
+
+  const csvContent = [headers.join(';'), ...rows].join('\r\n');
+  const dateStr = new Date().toISOString().slice(0, 10);
+  downloadCSVFile(`inventario-catalogo-${dateStr}.csv`, csvContent);
+}
+
+/**
+ * Exporta el reporte de pérdidas y ganancias (P&L) a CSV compatible con Microsoft Excel.
+ */
+export function exportPandLToCSV(
+  report: SystemPandLData,
+  settings: AppSettings
+): void {
+  const dateStr = new Date().toISOString().slice(0, 10);
+  const lines: string[] = [
+    `"ESTADO DE PERDIDAS Y GANANCIAS (P&L) - CHARCUTERIA JHOJAN"`,
+    `"Periodo";${escapeCSVField(report.periodLabel)}`,
+    `"Fecha de Generacion";${escapeCSVField(new Date(report.generatedAt).toLocaleString('es-VE'))}`,
+    `"Tasa BCV Referencial";${escapeCSVField(`${report.bcvRate.toFixed(2)} Bs/USD`)}`,
+    `""`,
+    `"1. INGRESOS Y VENTAS";"Monto USD";"Monto Bs (VES)"`,
+    `"Ventas Brutas Totales";${escapeCSVField(report.totalSalesUSD.toFixed(2))};${escapeCSVField(report.totalSalesVES.toFixed(2))}`,
+    `"Facturas Validas Emitidas";${escapeCSVField(report.validTicketsCount)};""`,
+    `"Cobranza Inmediata Contado";${escapeCSVField(report.collectedSalesUSD.toFixed(2))};${escapeCSVField(report.collectedSalesVES.toFixed(2))}`,
+    `"Fiados Nuevos Otorgados";${escapeCSVField(report.creditSalesUSD.toFixed(2))};${escapeCSVField(report.creditSalesVES.toFixed(2))}`,
+    `"Abonos de Fiados Cobrados";${escapeCSVField(report.collectedFiadosAbonosUSD.toFixed(2))};${escapeCSVField(report.collectedFiadosAbonosVES.toFixed(2))}`,
+    `""`,
+    `"2. COSTOS DIRECTOS DE MERCANCIA";"Monto USD";"Monto Bs (VES)"`,
+    `"Costo de Mercancia Vendida (COGS)";${escapeCSVField(`-${report.costOfGoodsSoldUSD.toFixed(2)}`)};${escapeCSVField(`-${report.costOfGoodsSoldVES.toFixed(2)}`)}`,
+    `"UTILIDAD BRUTA (Margen ${report.grossMarginPercent}%)";${escapeCSVField(report.grossProfitUSD.toFixed(2))};${escapeCSVField(report.grossProfitVES.toFixed(2))}`,
+    `""`,
+    `"3. GASTOS OPERATIVOS DEDUCIDOS";"Monto USD";"Monto Bs (VES)"`,
+    `"Total Gastos Operativos";${escapeCSVField(`-${report.operatingExpensesUSD.toFixed(2)}`)};${escapeCSVField(`-${report.operatingExpensesVES.toFixed(2)}`)}`,
+    ...report.expensesByCategory.map(
+      (c) =>
+        `"  Gasto: ${c.category} (${c.count} reg.)";${escapeCSVField(`-${c.totalUSD.toFixed(2)}`)};${escapeCSVField(`-${c.totalVES.toFixed(2)}`)}`
+    ),
+    `""`,
+    `"4. MERMAS FISICAS Y DESPERDICIOS";"Monto USD";"Monto Bs (VES)"`,
+    `"Total Perdidas por Merma";${escapeCSVField(`-${report.totalMermaCostUSD.toFixed(2)}`)};${escapeCSVField(`-${report.totalMermaCostVES.toFixed(2)}`)}`,
+    `"Kilos Perdidos en Secado/Recortes";${escapeCSVField(`${report.totalMermaWeightKG.toFixed(3)} KG`)};""`,
+    ...(report.mermasBreakdown || []).map(
+      (m) =>
+        `"  Merma: ${m.reason} (${m.count} reg., ${m.weightKG.toFixed(3)} kg)";${escapeCSVField(`-${m.totalUSD.toFixed(2)}`)};${escapeCSVField(`-${m.totalVES.toFixed(2)}`)}`
+    ),
+    `""`,
+    `"5. RESULTADO FINAL (GANANCIA / PERDIDA NETA)";"Monto USD";"Monto Bs (VES)"`,
+    `"${report.isProfit ? 'GANANCIA NETA REAL' : 'PERDIDA NETA'}";${escapeCSVField(report.netProfitUSD.toFixed(2))};${escapeCSVField(report.netProfitVES.toFixed(2))}`,
+    `"Margen Neto Real";${escapeCSVField(`${report.netMarginPercent}%`)};""`,
+    `""`,
+    `"6. CUENTAS CORRIENTES Y SALDOS";"Monto USD";"Monto Bs (VES)"`,
+    `"Cuentas por Cobrar (Fiados en la calle)";${escapeCSVField(report.currentAccountsReceivableUSD.toFixed(2))};${escapeCSVField(report.currentAccountsReceivableVES.toFixed(2))}`,
+    `"Cuentas por Pagar a Proveedores";${escapeCSVField(report.currentAccountsPayableUSD.toFixed(2))};${escapeCSVField(report.currentAccountsPayableVES.toFixed(2))}`,
+    `"Posicion Neta (Cobrar - Pagar)";${escapeCSVField((report.currentAccountsReceivableUSD - report.currentAccountsPayableUSD).toFixed(2))};""`,
+    `""`,
+    `"7. ARQUEO DE EFECTIVO Y BANCOS";"Monto USD";"Monto Bs (VES)"`,
+    `"Efectivo USD en Gaveta";${escapeCSVField(report.cashInDrawerUSD.toFixed(2))};""`,
+    `"Efectivo Bs en Gaveta";"";${escapeCSVField(report.cashInDrawerVES.toFixed(2))}`,
+    `"Bancos (Punto + Pago Movil)";"";${escapeCSVField(report.digitalInBankVES.toFixed(2))}`,
+    `""`,
+    `"8. TOP PRODUCTOS MAS VENDIDOS Y RENTABLES"`,
+    `"Producto";"Unidad";"Cant. Vendida";"Ingreso USD";"Costo USD";"Ganancia USD";"Margen %"`,
+    ...report.topProducts.map(
+      (p) =>
+        `${escapeCSVField(p.productName)};${escapeCSVField(p.unit)};${escapeCSVField(p.quantitySold)};${escapeCSVField(p.revenueUSD.toFixed(2))};${escapeCSVField(p.costUSD.toFixed(2))};${escapeCSVField(p.profitUSD.toFixed(2))};${escapeCSVField(`${p.marginPercent}%`)}`
+    ),
+  ];
+
+  downloadCSVFile(`reporte-pyg-pandl-${dateStr}.csv`, lines.join('\r\n'));
 }
 
 /**

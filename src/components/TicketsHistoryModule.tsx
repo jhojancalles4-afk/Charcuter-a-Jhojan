@@ -36,6 +36,8 @@ import {
 import { syncAndSumTicketsToFidelis, loadFidelisProfiles, saveFidelisProfiles } from '../services/fidelis';
 import { ThermalReceiptModal } from './ThermalReceiptModal';
 import { ShortCashReportView } from './ShortCashReportView';
+import { ReporteZView } from './ReporteZView';
+import { SystemPandLView } from './SystemPandLView';
 import { ExpensesView } from './ExpensesView';
 import { NewExpenseModal } from './NewExpenseModal';
 import { RestockRecord } from '../types';
@@ -57,6 +59,7 @@ interface TicketsHistoryModuleProps {
     notes?: string
   ) => void;
   onTicketsImported?: (updatedTickets: SaleTicket[], message: string) => void;
+  onNavigateToRestocks?: () => void;
 }
 
 export const TicketsHistoryModule: React.FC<TicketsHistoryModuleProps> = ({
@@ -70,8 +73,9 @@ export const TicketsHistoryModule: React.FC<TicketsHistoryModuleProps> = ({
   onDeleteExpense,
   onAbonoToRestock,
   onTicketsImported,
+  onNavigateToRestocks,
 }) => {
-  const [activeSubTab, setActiveSubTab] = useState<'tickets' | 'expenses' | 'report'>('tickets');
+  const [activeSubTab, setActiveSubTab] = useState<'tickets' | 'expenses' | 'report' | 'reporteZ' | 'pandl'>('tickets');
   const [isNewExpenseModalOpen, setIsNewExpenseModalOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [filterType, setFilterType] = useState<'all' | 'paid' | 'pending' | 'mixed' | 'voided'>('all');
@@ -224,7 +228,31 @@ export const TicketsHistoryModule: React.FC<TicketsHistoryModuleProps> = ({
             }`}
           >
             <DollarSign className="w-4 h-4 text-emerald-400" />
-            <span>Cuadre y Reporte Preciso</span>
+            <span>Arqueo Corto</span>
+          </button>
+
+          <button
+            onClick={() => setActiveSubTab('reporteZ')}
+            className={`px-3.5 py-2 rounded-xl text-xs font-bold transition flex items-center gap-2 cursor-pointer ${
+              activeSubTab === 'reporteZ'
+                ? 'bg-blue-600 text-white shadow-md shadow-blue-950/50'
+                : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/80'
+            }`}
+          >
+            <Printer className="w-4 h-4 text-blue-400" />
+            <span>Reporte Z (Rollos)</span>
+          </button>
+
+          <button
+            onClick={() => setActiveSubTab('pandl')}
+            className={`px-3.5 py-2 rounded-xl text-xs font-bold transition flex items-center gap-2 cursor-pointer ${
+              activeSubTab === 'pandl'
+                ? 'bg-purple-600 text-white shadow-md shadow-purple-950/50'
+                : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/80'
+            }`}
+          >
+            <BarChart3 className="w-4 h-4 text-purple-400" />
+            <span>Pérdidas y Ganancias (P&L)</span>
           </button>
         </div>
 
@@ -259,6 +287,26 @@ export const TicketsHistoryModule: React.FC<TicketsHistoryModuleProps> = ({
         />
       )}
 
+      {activeSubTab === 'reporteZ' && (
+        <ReporteZView
+          tickets={tickets}
+          expenses={expenses}
+          products={products}
+          settings={settings}
+          onOpenNewExpenseModal={() => setIsNewExpenseModalOpen(true)}
+        />
+      )}
+
+      {activeSubTab === 'pandl' && (
+        <SystemPandLView
+          tickets={tickets}
+          expenses={expenses}
+          restocks={restocks}
+          products={products}
+          settings={settings}
+        />
+      )}
+
       {activeSubTab === 'expenses' && (
         <ExpensesView
           expenses={expenses}
@@ -267,6 +315,7 @@ export const TicketsHistoryModule: React.FC<TicketsHistoryModuleProps> = ({
           onOpenNewExpenseModal={() => setIsNewExpenseModalOpen(true)}
           onDeleteExpense={onDeleteExpense}
           onAbonoToRestock={onAbonoToRestock}
+          onNavigateToRestocks={onNavigateToRestocks}
         />
       )}
 

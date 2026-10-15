@@ -279,11 +279,24 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
               </div>
             </div>
 
-            <div className="text-right">
-              <span className="text-[10px] text-slate-400 block">Deuda Total a Proveedores:</span>
-              <span className="text-base font-bold font-mono text-amber-400">
-                {formatUSD(totalPendingSupplierDebtUSD)}
-              </span>
+            <div className="flex items-center gap-3">
+              <div className="text-right">
+                <span className="text-[10px] text-slate-400 block">Deuda Total a Proveedores:</span>
+                <span className="text-base font-bold font-mono text-amber-400">
+                  {formatUSD(totalPendingSupplierDebtUSD)}
+                </span>
+              </div>
+              {onNavigateToRestocks && (
+                <button
+                  type="button"
+                  onClick={onNavigateToRestocks}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold border border-slate-700 transition cursor-pointer"
+                  title="Abrir módulo completo de reposición y cuentas por pagar"
+                >
+                  <Truck className="w-3.5 h-3.5 text-amber-400" />
+                  <span>Ver Reposición</span>
+                </button>
+              )}
             </div>
           </div>
 

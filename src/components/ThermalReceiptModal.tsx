@@ -77,6 +77,21 @@ export const ThermalReceiptModal: React.FC<ThermalReceiptModalProps> = ({
     setTimeout(() => setIsPrinting(false), 1200);
   };
 
+  const handleBluetoothPrint = async () => {
+    setIsPrinting(true);
+    setBluetoothStatus('Conectando con impresora térmica...');
+    try {
+      const res = await printReceiptBluetoothDirect(ticket, settings);
+      setBluetoothStatus(res.message);
+      setTimeout(() => setBluetoothStatus(null), 4000);
+    } catch (e: any) {
+      setBluetoothStatus('Error al conectar con la impresora Bluetooth.');
+      setTimeout(() => setBluetoothStatus(null), 4000);
+    } finally {
+      setIsPrinting(false);
+    }
+  };
+
   const [isSharingImage, setIsSharingImage] = useState(false);
   const handleShareImageNative = async () => {
     if (!dataUrl) return;

@@ -79,6 +79,9 @@ export const POSModule: React.FC<POSModuleProps> = ({
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('cash_usd');
   const [applySuggestedUSD, setApplySuggestedUSD] = useState(false);
   const [checkoutError, setCheckoutError] = useState<string | null>(null);
+  const [confirmClearCart, setConfirmClearCart] = useState(false);
+  const [tenderedUSD, setTenderedUSD] = useState<string>('');
+  const [tenderedVES, setTenderedVES] = useState<string>('');
 
   // Multi-Payment (Pago Mixto) Splits State
   const [splitCashUSD, setSplitCashUSD] = useState<string>('');
@@ -358,10 +361,8 @@ export const POSModule: React.FC<POSModuleProps> = ({
   };
 
   const clearCart = () => {
-    if (cart.length === 0) return;
-    if (window.confirm('¿Deseas vaciar el carrito actual?')) {
-      setCart([]);
-    }
+    setCart([]);
+    setConfirmClearCart(false);
   };
 
   // Preferential rate for cash USD
@@ -402,6 +403,8 @@ export const POSModule: React.FC<POSModuleProps> = ({
     setSplitCashVES('');
     setSplitFiadoUSD('');
     setSplitReference('');
+    setTenderedUSD('');
+    setTenderedVES('');
     setIsCheckoutOpen(true);
   };
 
@@ -817,14 +820,35 @@ ${isCredit ? `\n*Saldo Pendiente:* ${formatUSD(ticket.pendingUSD)} (~${formatVES
               </p>
             </div>
             {cart.length > 0 && (
-              <button
-                onClick={clearCart}
-                className="flex items-center gap-1 text-xs text-rose-400 hover:text-rose-300 p-1 rounded hover:bg-rose-950/40 transition cursor-pointer"
-                title="Vaciar carrito"
-              >
-                <Trash2 className="w-3.5 h-3.5" />
-                <span>Vaciar</span>
-              </button>
+              confirmClearCart ? (
+                <div className="flex items-center gap-1.5 animate-in fade-in bg-slate-950 p-1 rounded-xl border border-rose-900/50">
+                  <span className="text-[10px] text-amber-300 font-semibold pl-1">¿Vaciar?</span>
+                  <button
+                    type="button"
+                    onClick={clearCart}
+                    className="px-2 py-0.5 rounded bg-rose-600 hover:bg-rose-500 text-white text-[10px] font-bold cursor-pointer"
+                  >
+                    Sí
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setConfirmClearCart(false)}
+                    className="px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 text-[10px] cursor-pointer"
+                  >
+                    No
+                  </button>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setConfirmClearCart(true)}
+                  className="flex items-center gap-1 text-xs text-rose-400 hover:text-rose-300 p-1.5 rounded-lg hover:bg-rose-950/40 transition cursor-pointer"
+                  title="Vaciar carrito"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  <span>Vaciar</span>
+                </button>
+              )
             )}
           </div>
 
@@ -1515,6 +1539,146 @@ ${isCredit ? `\n*Saldo Pendiente:* ${formatUSD(ticket.pendingUSD)} (~${formatVES
                     <p className="text-[10px] text-slate-400 italic text-center">
                       * Cálculo 100% en dólares USD (sin bolívares). La tasa preferencial no se imprimirá en la factura.
                     </p>
+                  </div>
+                )}
+
+                {/* Calculadora de Vuelto / Cambio en Efectivo Divisas USD */}
+                {paymentMethod === 'cash_usd' && (
+                  <div className="p-3.5 rounded-2xl bg-slate-900 border border-slate-800 text-xs space-y-2.5">
+                    <div className="flex items-center justify-between">
+                      <span className="font-semibold text-slate-200 flex items-center gap-1.5">
+                        <Calculator className="w-4 h-4 text-emerald-400" />
+                        <span>Calculadora de Vuelto / Cambio:</span>
+                      </span>
+                      <span className="text-[11px] text-slate-400 font-mono">
+                        A pagar: <strong className="text-emerald-400">${(applySuggestedUSD ? suggestedCashUSD : totalUSD).toFixed(2)} USD</strong>
+                      </span>
+                    </div>
+
+                    {/* Quick Bill Buttons */}
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <span className="text-[10px] text-slate-400 uppercase font-mono mr-1">Billetes:</span>
+                      {['5', '10', '20', '50', '100'].map((bill) => (
+                        <button
+                          key={bill}
+                          type="button"
+                          onClick={() => setTenderedUSD(bill)}
+                          className={`px-2.5 py-1 rounded-lg text-xs font-mono font-bold transition border cursor-pointer ${
+                            tenderedUSD === bill
+                              ? 'bg-emerald-600 text-white border-emerald-500 shadow-sm'
+                              : 'bg-slate-950 hover:bg-slate-800 text-slate-300 border-slate-700'
+                          }`}
+                        >
+                          ${bill}
+                        </button>
+                      ))}
+                      {tenderedUSD && (
+                        <button
+                          type="button"
+                          onClick={() => setTenderedUSD('')}
+                          className="px-2 py-1 rounded-lg text-[10px] text-slate-400 hover:text-slate-200 bg-slate-800 cursor-pointer ml-auto"
+                        >
+                          Limpiar
+                        </button>
+                      )}
+                    </div>
+
+                    {/* Tender Input */}
+                    <div className="relative">
+                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 font-mono">$</span>
+                      <input
+                        type="number"
+                        step="0.01"
+                        placeholder="Monto entregado por el cliente en efectivo (Ej. 20.00)"
+                        value={tenderedUSD}
+                        onChange={(e) => setTenderedUSD(e.target.value)}
+                        className="w-full bg-slate-950 border border-slate-700 rounded-xl pl-8 pr-3 py-2 text-xs font-mono text-white focus:outline-emerald-500"
+                      />
+                    </div>
+
+                    {/* Change Result Preview */}
+                    {(() => {
+                      const due = applySuggestedUSD ? suggestedCashUSD : totalUSD;
+                      const tendered = parseFloat(tenderedUSD.replace(',', '.')) || 0;
+                      if (tendered <= 0) return null;
+
+                      if (tendered >= due) {
+                        const changeUSD = Math.round((tendered - due) * 100) / 100;
+                        const changeVES = Math.round(changeUSD * settings.bcvRate * 100) / 100;
+                        return (
+                          <div className="p-2.5 rounded-xl bg-emerald-950/70 border border-emerald-800/80 space-y-1 animate-in fade-in">
+                            <div className="flex items-center justify-between text-emerald-300 font-bold">
+                              <span>Vuelto a entregar al cliente ($):</span>
+                              <span className="text-sm font-mono text-emerald-400">+${changeUSD.toFixed(2)} USD</span>
+                            </div>
+                            <div className="flex items-center justify-between text-[11px] text-slate-300 font-mono">
+                              <span>O en Bolívares (Tasa BCV):</span>
+                              <span className="font-bold text-slate-100">+Bs. {changeVES.toFixed(2)}</span>
+                            </div>
+                          </div>
+                        );
+                      } else {
+                        const missingUSD = Math.round((due - tendered) * 100) / 100;
+                        const missingVES = Math.round(missingUSD * settings.bcvRate * 100) / 100;
+                        return (
+                          <div className="p-2.5 rounded-xl bg-rose-950/60 border border-rose-800/80 flex items-center justify-between text-xs animate-in fade-in">
+                            <span className="text-rose-300 font-semibold">⚠️ Monto insuficiente:</span>
+                            <span className="font-mono font-bold text-rose-400">
+                              Faltan ${missingUSD.toFixed(2)} USD (~Bs. {missingVES.toFixed(2)})
+                            </span>
+                          </div>
+                        );
+                      }
+                    })()}
+                  </div>
+                )}
+
+                {/* Calculadora de Vuelto / Cambio en Efectivo Bolívares */}
+                {paymentMethod === 'cash_ves' && (
+                  <div className="p-3.5 rounded-2xl bg-slate-900 border border-slate-800 text-xs space-y-2.5">
+                    <div className="flex items-center justify-between">
+                      <span className="font-semibold text-slate-200 flex items-center gap-1.5">
+                        <Calculator className="w-4 h-4 text-emerald-400" />
+                        <span>Calculadora de Vuelto (Efectivo Bs.):</span>
+                      </span>
+                      <span className="text-[11px] text-slate-400 font-mono">
+                        A pagar: <strong className="text-emerald-400">{formatVES(totalVES)}</strong>
+                      </span>
+                    </div>
+
+                    <div className="relative">
+                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 font-mono text-[11px]">Bs.</span>
+                      <input
+                        type="number"
+                        step="1"
+                        placeholder="Monto en Bolívares entregado por el cliente"
+                        value={tenderedVES}
+                        onChange={(e) => setTenderedVES(e.target.value)}
+                        className="w-full bg-slate-950 border border-slate-700 rounded-xl pl-9 pr-3 py-2 text-xs font-mono text-white focus:outline-emerald-500"
+                      />
+                    </div>
+
+                    {(() => {
+                      const tendered = parseFloat(tenderedVES.replace(',', '.')) || 0;
+                      if (tendered <= 0) return null;
+                      if (tendered >= totalVES) {
+                        const changeVES = Math.round((tendered - totalVES) * 100) / 100;
+                        return (
+                          <div className="p-2.5 rounded-xl bg-emerald-950/70 border border-emerald-800/80 flex items-center justify-between animate-in fade-in">
+                            <span className="text-emerald-300 font-bold">Vuelto en Bolívares:</span>
+                            <span className="text-sm font-mono font-bold text-emerald-400">+Bs. {changeVES.toFixed(2)}</span>
+                          </div>
+                        );
+                      } else {
+                        const missingVES = Math.round((totalVES - tendered) * 100) / 100;
+                        return (
+                          <div className="p-2.5 rounded-xl bg-rose-950/60 border border-rose-800/80 flex items-center justify-between text-xs animate-in fade-in">
+                            <span className="text-rose-300 font-semibold">⚠️ Monto insuficiente:</span>
+                            <span className="font-mono font-bold text-rose-400">Faltan Bs. {missingVES.toFixed(2)}</span>
+                          </div>
+                        );
+                      }
+                    })()}
                   </div>
                 )}
 

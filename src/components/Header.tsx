@@ -15,18 +15,20 @@ import {
   Sparkles,
   Award,
   ShieldCheck,
+  Truck,
 } from 'lucide-react';
 import { AppSettings } from '../types';
 import { formatVES, formatUSD } from '../services/storage';
 import { OfflineIndicator } from './OfflineIndicator';
 
 interface HeaderProps {
-  activeTab: 'pos' | 'tickets' | 'fiados' | 'inventory' | 'settings';
-  setActiveTab: (tab: 'pos' | 'tickets' | 'fiados' | 'inventory' | 'settings') => void;
+  activeTab: 'pos' | 'tickets' | 'fiados' | 'restocks' | 'inventory' | 'settings';
+  setActiveTab: (tab: 'pos' | 'tickets' | 'fiados' | 'restocks' | 'inventory' | 'settings') => void;
   settings: AppSettings;
   onUpdateBcvRate: (newRate: number) => void;
   onUpdatePreferentialRate?: (newRate: number) => void;
   debtorsCount: number;
+  pendingSuppliersCount?: number;
   totalTicketsCount?: number;
   totalDebtUSD: number;
   onSync?: () => void;
@@ -43,6 +45,7 @@ export const Header: React.FC<HeaderProps> = ({
   onUpdateBcvRate,
   onUpdatePreferentialRate,
   debtorsCount,
+  pendingSuppliersCount = 0,
   totalTicketsCount = 0,
   totalDebtUSD,
   fidelisRewardsReadyCount = 0,
@@ -342,6 +345,28 @@ export const Header: React.FC<HeaderProps> = ({
               )}
             </button>
           )}
+
+          <button
+            id="nav-tab-restocks"
+            onClick={() => setActiveTab('restocks')}
+            className={`relative flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs sm:text-sm font-semibold transition whitespace-nowrap cursor-pointer ${
+              activeTab === 'restocks'
+                ? 'bg-rose-600 text-white shadow-md shadow-rose-950/50'
+                : 'text-slate-300 hover:text-white hover:bg-slate-800/80'
+            }`}
+          >
+            <Truck className="w-4 h-4" />
+            <span>Reposición & Proveedores</span>
+            {pendingSuppliersCount > 0 && (
+              <span
+                id="badge-suppliers-pending"
+                className="ml-1 px-1.5 py-0.2 rounded-full text-[10px] font-mono font-bold bg-amber-500 text-slate-950 shadow-xs"
+                title={`${pendingSuppliersCount} compras a crédito por pagar a proveedores`}
+              >
+                {pendingSuppliersCount}
+              </span>
+            )}
+          </button>
 
           <button
             id="nav-tab-inventory"

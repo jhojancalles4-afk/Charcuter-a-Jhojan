@@ -1,4 +1,4 @@
-import { AppSettings, ExpenseRecord, Product, RestockRecord, SaleTicket } from '../types';
+import { AppSettings, ExpenseRecord, MermaRecord, Product, RestockRecord, SaleTicket } from '../types';
 
 export interface VenezuelanBank {
   code: string;
@@ -541,6 +541,41 @@ export const INITIAL_RESTOCKS: RestockRecord[] = [
     pendingVES: 0,
     notes: 'Piezas selladas al vacío listas para rebanar',
     createdAt: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString(),
+  },
+];
+
+export const INITIAL_MERMAS: MermaRecord[] = [
+  {
+    id: 'MERMA-101',
+    date: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString(),
+    productId: 'prod-1',
+    productName: 'Queso Blanco Llanero Duro',
+    category: 'Quesos',
+    unit: 'KG',
+    quantity: 0.350,
+    unitCostUSD: 4.00,
+    totalCostUSD: 1.40,
+    totalCostVES: 1.40 * 78.50,
+    bcvRate: 78.50,
+    reason: 'Secado / Pérdida de humedad',
+    notes: 'Merma natural por deshidratación en exhibidor refrigerado durante 3 días.',
+    performedBy: 'Encargado de Charcutería',
+  },
+  {
+    id: 'MERMA-102',
+    date: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString(),
+    productId: 'prod-5',
+    productName: 'Jamón Cocido Superior Plumrose',
+    category: 'Embutidos',
+    unit: 'KG',
+    quantity: 0.180,
+    unitCostUSD: 6.20,
+    totalCostUSD: 1.12,
+    totalCostVES: 1.12 * 78.50,
+    bcvRate: 78.50,
+    reason: 'Recortes / Extremos de pieza',
+    notes: 'Tapas y extremos no rebanables retirados para mantener calidad de lonjas.',
+    performedBy: 'Cajero / Mostrador',
   },
 ];
 

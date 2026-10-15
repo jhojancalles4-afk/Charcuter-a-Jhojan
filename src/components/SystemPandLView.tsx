@@ -21,10 +21,14 @@ import {
   CreditCard,
   Wallet,
   Building,
+  Scissors,
+  Droplets,
+  FileSpreadsheet,
 } from 'lucide-react';
 import {
   AppSettings,
   ExpenseRecord,
+  MermaRecord,
   Product,
   RestockRecord,
   SaleTicket,
@@ -36,6 +40,7 @@ import {
   formatQuantity,
   buildSystemPandLReport,
   generateWhatsAppPandLReport,
+  exportPandLToCSV,
   ZReportPeriodFilter,
 } from '../services/storage';
 
@@ -45,6 +50,8 @@ interface SystemPandLViewProps {
   restocks: RestockRecord[];
   products: Product[];
   settings: AppSettings;
+  mermas?: MermaRecord[];
+  onOpenMermaModal?: (product?: Product) => void;
 }
 
 export const SystemPandLView: React.FC<SystemPandLViewProps> = ({
@@ -53,6 +60,8 @@ export const SystemPandLView: React.FC<SystemPandLViewProps> = ({
   restocks,
   products,
   settings,
+  mermas = [],
+  onOpenMermaModal,
 }) => {
   const [period, setPeriod] = useState<ZReportPeriodFilter>('month');
   const [customStart, setCustomStart] = useState<string>(() => {
@@ -62,6 +71,7 @@ export const SystemPandLView: React.FC<SystemPandLViewProps> = ({
   });
   const [customEnd, setCustomEnd] = useState<string>(() => new Date().toISOString().slice(0, 10));
   const [copiedMessage, setCopiedMessage] = useState(false);
+  const [downloadedCSV, setDownloadedCSV] = useState(false);
 
   // Compute the comprehensive P&L data
   const report: SystemPandLData = useMemo(() => {
@@ -73,9 +83,10 @@ export const SystemPandLView: React.FC<SystemPandLViewProps> = ({
       settings,
       period,
       customStart,
-      customEnd
+      customEnd,
+      mermas
     );
-  }, [tickets, expenses, restocks, products, settings, period, customStart, customEnd]);
+  }, [tickets, expenses, restocks, products, settings, period, customStart, customEnd, mermas]);
 
   // WhatsApp Share URL
   const { url: whatsAppUrl, message: whatsAppMessage } = useMemo(() => {
@@ -90,6 +101,12 @@ export const SystemPandLView: React.FC<SystemPandLViewProps> = ({
 
   const handlePrint = () => {
     window.print();
+  };
+
+  const handleExportCSV = () => {
+    exportPandLToCSV(report, settings);
+    setDownloadedCSV(true);
+    setTimeout(() => setDownloadedCSV(false), 2500);
   };
 
   return (
@@ -107,11 +124,31 @@ export const SystemPandLView: React.FC<SystemPandLViewProps> = ({
               </h2>
             </div>
             <p className="text-xs sm:text-sm text-slate-400">
-              Auditoría financiera integral: Ingresos de ventas, costo de mercancía (COGS), gastos operativos y resultado neto real.
+              Auditoría financiera integral: Ingresos de ventas, costo de mercancía (COGS), gastos operativos, mermas de manipulación y resultado neto real.
             </p>
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
+            {onOpenMermaModal && (
+              <button
+                type="button"
+                onClick={() => onOpenMermaModal()}
+                className="px-3.5 py-2 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 border border-amber-500/30 text-xs font-bold transition flex items-center gap-2 cursor-pointer"
+              >
+                <Scissors className="w-3.5 h-3.5 text-amber-400" />
+                <span>Ajuste de Merma</span>
+              </button>
+            )}
+
+            <button
+              type="button"
+              onClick={handleExportCSV}
+              className="px-3.5 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold transition flex items-center gap-2 shadow-md shadow-blue-950/40 cursor-pointer"
+            >
+              <FileSpreadsheet className="w-3.5 h-3.5" />
+              <span>{downloadedCSV ? '✓ Excel Descargado' : 'Exportar Excel / CSV'}</span>
+            </button>
+
             <a
               href={whatsAppUrl}
               target="_blank"
@@ -119,7 +156,7 @@ export const SystemPandLView: React.FC<SystemPandLViewProps> = ({
               className="px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold transition flex items-center gap-2 shadow-md shadow-emerald-950/40 cursor-pointer"
             >
               <Send className="w-3.5 h-3.5" />
-              <span>Enviar WhatsApp</span>
+              <span>WhatsApp</span>
             </a>
 
             <button
@@ -227,13 +264,13 @@ export const SystemPandLView: React.FC<SystemPandLViewProps> = ({
 
             <p className="text-xs sm:text-sm text-slate-300 mt-2 max-w-xl">
               Margen Neto Real del <strong>{report.netMarginPercent}%</strong> sobre ventas totales después de
-              descontar el costo directo de la mercancía ({formatUSD(report.costOfGoodsSoldUSD)}) y gastos operativos (
-              {formatUSD(report.operatingExpensesUSD)}).
+              descontar el costo directo de la mercancía ({formatUSD(report.costOfGoodsSoldUSD)}), gastos operativos ({formatUSD(report.operatingExpensesUSD)})
+              {report.totalMermaCostUSD > 0 && ` y mermas físicas de secado/manipulación (${formatUSD(report.totalMermaCostUSD)})`}.
             </p>
           </div>
 
           {/* Quick Sub-Metrics Bento */}
-          <div className="grid grid-cols-2 gap-3 shrink-0">
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 shrink-0">
             <div className="bg-slate-950/80 border border-slate-800 rounded-2xl p-3.5">
               <span className="text-[11px] font-semibold text-slate-400 block mb-0.5">Utilidad Bruta (Margen)</span>
               <span className="text-base sm:text-lg font-mono font-bold text-white block">
@@ -243,6 +280,14 @@ export const SystemPandLView: React.FC<SystemPandLViewProps> = ({
             </div>
 
             <div className="bg-slate-950/80 border border-slate-800 rounded-2xl p-3.5">
+              <span className="text-[11px] font-semibold text-slate-400 block mb-0.5">Mermas Físicas</span>
+              <span className="text-base sm:text-lg font-mono font-bold text-amber-400 block">
+                -{formatUSD(report.totalMermaCostUSD)}
+              </span>
+              <span className="text-xs text-slate-400 font-mono">{report.totalMermaWeightKG.toFixed(2)} KG merma</span>
+            </div>
+
+            <div className="bg-slate-950/80 border border-slate-800 rounded-2xl p-3.5 col-span-2 sm:col-span-1">
               <span className="text-[11px] font-semibold text-slate-400 block mb-0.5">Flujo Operativo Neto</span>
               <span className="text-base sm:text-lg font-mono font-bold text-white block">
                 {formatUSD(report.collectedSalesUSD - report.totalExpensesUSD)}
@@ -254,7 +299,7 @@ export const SystemPandLView: React.FC<SystemPandLViewProps> = ({
       </div>
 
       {/* THE FINANCIAL BRIDGE (WATERFALL CARDS) */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3.5">
         {/* 1. Ventas Netas */}
         <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 shadow-md">
           <div className="flex items-center justify-between text-xs text-slate-400 mb-1">
@@ -268,14 +313,14 @@ export const SystemPandLView: React.FC<SystemPandLViewProps> = ({
             {formatVES(report.totalSalesVES)}
           </div>
           <div className="mt-2 pt-2 border-t border-slate-800/80 text-[11px] text-slate-400">
-            {report.validTicketsCount} facturas válidas ({report.totalWeightSoldKG.toFixed(2)} KG y {report.totalUnitsSoldUN} UN)
+            {report.validTicketsCount} facturas válidas ({report.totalWeightSoldKG.toFixed(2)} KG)
           </div>
         </div>
 
         {/* 2. Costo de Mercancía (COGS) */}
         <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 shadow-md">
           <div className="flex items-center justify-between text-xs text-slate-400 mb-1">
-            <span className="font-bold text-rose-400 uppercase tracking-wide">2. Costo Mercancía (COGS)</span>
+            <span className="font-bold text-rose-400 uppercase tracking-wide">2. Costo Mercancía</span>
             <ArrowDownRight className="w-4 h-4 text-rose-400" />
           </div>
           <div className="text-xl sm:text-2xl font-black font-mono text-rose-400">
@@ -285,7 +330,7 @@ export const SystemPandLView: React.FC<SystemPandLViewProps> = ({
             -{formatVES(report.costOfGoodsSoldVES)}
           </div>
           <div className="mt-2 pt-2 border-t border-slate-800/80 text-[11px] text-slate-400">
-            Costo de lo que salió del inventario
+            Costo de lo despachado
           </div>
         </div>
 
@@ -319,9 +364,116 @@ export const SystemPandLView: React.FC<SystemPandLViewProps> = ({
             -{formatVES(report.operatingExpensesVES)}
           </div>
           <div className="mt-2 pt-2 border-t border-slate-800/80 text-[11px] text-slate-400">
-            {expenses.length} egresos (nómina, bolsas, servicios)
+            {expenses.length} egresos operativos
           </div>
         </div>
+
+        {/* 5. Mermas Físicas */}
+        <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 shadow-md">
+          <div className="flex items-center justify-between text-xs text-slate-400 mb-1">
+            <span className="font-bold text-amber-400 uppercase tracking-wide">5. Mermas Físicas</span>
+            <Scissors className="w-4 h-4 text-amber-400" />
+          </div>
+          <div className="text-xl sm:text-2xl font-black font-mono text-amber-400">
+            -{formatUSD(report.totalMermaCostUSD)}
+          </div>
+          <div className="text-xs font-mono text-slate-400 mt-0.5">
+            -{formatVES(report.totalMermaCostVES)}
+          </div>
+          <div className="mt-2 pt-2 border-t border-slate-800/80 text-[11px] text-slate-400 flex items-center justify-between">
+            <span>{report.totalMermaWeightKG.toFixed(2)} KG secado/recortes</span>
+            {onOpenMermaModal && (
+              <button
+                type="button"
+                onClick={() => onOpenMermaModal()}
+                className="text-amber-400 hover:text-amber-300 font-bold underline cursor-pointer"
+              >
+                +Ajustar
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* SECTION: MERMAS FÍSICAS & DESPERDICIOS POR MANIPULACIÓN */}
+      <div className="bg-slate-900 border border-slate-800 rounded-3xl p-5 sm:p-6 shadow-xl space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-800">
+          <div className="flex items-center gap-2.5">
+            <div className="p-2 rounded-xl bg-amber-500/10 text-amber-400 border border-amber-500/20">
+              <Scissors className="w-5 h-5" />
+            </div>
+            <div>
+              <h3 className="font-bold text-sm sm:text-base text-white">
+                Mermas Físicas & Manipulación de Charcutería
+              </h3>
+              <p className="text-xs text-slate-400">
+                Pérdida de humedad/secado en vitrinas refrigeradas, extremos y tapas de barras, y descartes registrados en el período.
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-3">
+            <div className="text-right font-mono">
+              <span className="text-base font-bold text-amber-400 block">
+                -{formatUSD(report.totalMermaCostUSD)}
+              </span>
+              <span className="text-[11px] text-slate-400">
+                -{formatVES(report.totalMermaCostVES)}
+              </span>
+            </div>
+
+            {onOpenMermaModal && (
+              <button
+                type="button"
+                onClick={() => onOpenMermaModal()}
+                className="px-3.5 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-black transition flex items-center gap-1.5 shadow-md shadow-amber-950/40 cursor-pointer"
+              >
+                <Scissors className="w-3.5 h-3.5" />
+                <span>Registrar Merma</span>
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* Breakdown by reason chips */}
+        {report.mermasBreakdown && report.mermasBreakdown.length > 0 ? (
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
+            {report.mermasBreakdown.map((b) => (
+              <div
+                key={b.reason}
+                className="p-3.5 rounded-2xl bg-slate-950 border border-slate-800 space-y-1"
+              >
+                <span className="text-xs font-bold text-slate-200 block truncate" title={b.reason}>
+                  {b.reason}
+                </span>
+                <div className="flex items-baseline justify-between font-mono">
+                  <span className="text-sm font-black text-amber-400">
+                    -{formatUSD(b.totalUSD)}
+                  </span>
+                  <span className="text-xs text-slate-400 font-semibold">
+                    {b.weightKG > 0 ? `${b.weightKG.toFixed(3)} KG` : `${b.count} reg.`}
+                  </span>
+                </div>
+                <span className="text-[10px] text-slate-500 font-mono block">
+                  {b.count} registro{b.count > 1 ? 's' : ''} imputado{b.count > 1 ? 's' : ''} al P&L
+                </span>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="p-4 rounded-2xl bg-slate-950 border border-slate-800/80 text-center text-xs text-slate-400 flex flex-col sm:flex-row items-center justify-between gap-3">
+            <span>No hay registros de merma imputados en el período seleccionado.</span>
+            {onOpenMermaModal && (
+              <button
+                type="button"
+                onClick={() => onOpenMermaModal()}
+                className="text-amber-400 hover:text-amber-300 font-bold underline cursor-pointer"
+              >
+                ¿Deseas registrar un pesaje de secado o recortes? Haz clic aquí
+              </button>
+            )}
+          </div>
+        )}
       </div>
 
       {/* SECTION: ARQUEO DE CAJA Y CUENTAS CORRIENTES */}

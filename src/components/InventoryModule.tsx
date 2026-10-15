@@ -177,15 +177,16 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({
     }
   };
 
+  const [productToDelete, setProductToDelete] = useState<Product | null>(null);
+
   const applyPresetMargin = (presetPct: number) => {
     handleMarginChange(presetPct.toString());
   };
 
   const handleDeleteProduct = (productId: string) => {
     const prod = products.find((p) => p.id === productId);
-    if (!prod) return;
-    if (window.confirm(`¿Estás seguro de eliminar "${prod.name}" del catálogo?`)) {
-      onUpdateProducts(products.filter((p) => p.id !== productId));
+    if (prod) {
+      setProductToDelete(prod);
     }
   };
 
@@ -318,7 +319,11 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({
             id="btn-telegram-inventory-backup"
             onClick={() => {
               const { url } = generateTelegramInventoryReport(products, settings);
-              window.open(url, '_blank');
+              const a = document.createElement('a');
+              a.href = url;
+              a.target = '_blank';
+              a.rel = 'noopener noreferrer';
+              a.click();
             }}
             className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-sky-950/60 hover:bg-sky-900/80 border border-sky-800/60 text-sky-300 hover:text-white text-xs font-semibold transition shadow-sm cursor-pointer active:scale-95"
             title="Enviar respaldo de inventario y stock por Telegram"
@@ -1131,6 +1136,51 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({
           return true;
         }}
       />
+
+      {/* Product Deletion Confirmation Modal */}
+      {productToDelete && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-xs p-4 animate-in fade-in">
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 max-w-md w-full shadow-2xl space-y-4">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-rose-500/20 text-rose-400 flex items-center justify-center border border-rose-500/30">
+                <Trash2 className="w-5 h-5" />
+              </div>
+              <div>
+                <h4 className="text-base font-bold text-white">¿Eliminar Producto?</h4>
+                <p className="text-xs text-slate-400">Esta acción no se puede deshacer.</p>
+              </div>
+            </div>
+            <div className="p-3 bg-slate-950 rounded-xl border border-slate-800 text-xs space-y-1">
+              <div className="flex items-center gap-2 font-semibold text-slate-200">
+                <span>{productToDelete.emoji}</span>
+                <span>{productToDelete.name}</span>
+              </div>
+              <p className="text-slate-400 font-mono">
+                Stock actual: {formatQuantity(productToDelete.stock, productToDelete.unit)} • Precio: {formatUSD(productToDelete.priceUSD)}
+              </p>
+            </div>
+            <div className="flex gap-2 justify-end pt-1">
+              <button
+                type="button"
+                onClick={() => setProductToDelete(null)}
+                className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold cursor-pointer"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  onUpdateProducts(products.filter((p) => p.id !== productToDelete.id));
+                  setProductToDelete(null);
+                }}
+                className="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold shadow-md shadow-rose-950/50 cursor-pointer"
+              >
+                Eliminar Producto
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

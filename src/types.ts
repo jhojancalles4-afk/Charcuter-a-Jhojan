@@ -308,6 +308,30 @@ export interface RestockRecord {
   notes?: string;
   createdAt: string;
 }
+ 
+// --- Módulo de Mermas Físicas & Desperdicios por Manipulación ---
+export type MermaReason =
+  | 'Secado / Pérdida de humedad'
+  | 'Recortes / Extremos de pieza'
+  | 'Daño / Vencimiento'
+  | 'Ajuste de inventario físico';
+
+export interface MermaRecord {
+  id: string;
+  date: string; // ISO string
+  productId: string;
+  productName: string;
+  category: ProductCategory;
+  unit: UnitType;
+  quantity: number; // Kilos o unidades
+  unitCostUSD: number;
+  totalCostUSD: number;
+  totalCostVES: number;
+  bcvRate: number;
+  reason: MermaReason;
+  notes?: string;
+  performedBy?: string;
+}
 
 // --- Reporte Integral de Pérdidas y Ganancias (P&L del Sistema) ---
 export interface SystemPandLData {
@@ -371,10 +395,24 @@ export interface SystemPandLData {
   }[];
 
   // 5. Ganancia o Pérdida Neta Real (P&L)
-  netProfitUSD: number; // Utilidad Bruta - Gastos Operativos
+  netProfitUSD: number; // Utilidad Bruta - Gastos Operativos - Mermas Físicas
   netProfitVES: number;
   netMarginPercent: number;
   isProfit: boolean;
+
+  // 5b. Mermas Físicas y Desperdicio por Manipulación
+  totalMermaCostUSD: number;
+  totalMermaCostVES: number;
+  totalMermaWeightKG: number;
+  totalMermaUnitsUN: number;
+  mermasCount: number;
+  mermasBreakdown?: {
+    reason: MermaReason;
+    totalUSD: number;
+    totalVES: number;
+    count: number;
+    weightKG: number;
+  }[];
 
   // 6. Cuentas Corrientes y Saldos
   currentAccountsReceivableUSD: number; // Cuentas por Cobrar (Libro de fiados pendientes)

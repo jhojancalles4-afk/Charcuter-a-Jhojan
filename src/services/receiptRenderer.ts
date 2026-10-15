@@ -783,21 +783,27 @@ export function downloadZReportPNG(report: ZReportData, settings: AppSettings): 
 }
 
 /**
- * Standard thermal print for Z-Report
+ * Standard thermal print for Z-Report using isolated printable iframe
  */
 export function printZReportThermal(report: ZReportData, settings: AppSettings): void {
   const canvas = generateZReportCanvas(report, settings);
   const dataUrl = canvas.toDataURL('image/png');
 
-  try {
-    const printWindow = window.open('', '_blank');
-    if (!printWindow) {
-      console.warn('Ventanas emergentes bloqueadas. Por favor permite popups para imprimir.');
-      window.print();
-      return;
-    }
+  // Create an isolated printable iframe (avoids popup blocker and works cleanly in iframes/PWAs)
+  const iframe = document.createElement('iframe');
+  iframe.style.position = 'fixed';
+  iframe.style.right = '0';
+  iframe.style.bottom = '0';
+  iframe.style.width = '0';
+  iframe.style.height = '0';
+  iframe.style.border = 'none';
+  document.body.appendChild(iframe);
 
-  printWindow.document.write(`
+  const doc = iframe.contentWindow?.document;
+  if (!doc) return;
+
+  doc.open();
+  doc.write(`
     <!DOCTYPE html>
     <html>
       <head>
@@ -807,29 +813,43 @@ export function printZReportThermal(report: ZReportData, settings: AppSettings):
             size: 80mm auto;
             margin: 0;
           }
+          @media print {
+            body {
+              margin: 0;
+              padding: 0;
+              background: #fff;
+            }
+            img {
+              width: 100%;
+              max-width: 80mm;
+              display: block;
+              margin: 0 auto;
+            }
+          }
           body {
             margin: 0;
             padding: 0;
-            background: #ffffff;
             display: flex;
             justify-content: center;
           }
           img {
-            max-width: 100%;
-            width: 80mm;
-            height: auto;
+            width: 100%;
+            max-width: 576px;
             display: block;
           }
         </style>
       </head>
       <body>
-        <img src="${dataUrl}" onload="window.print(); setTimeout(() => window.close(), 1000);" />
+        <img src="${dataUrl}" onload="window.print();" />
       </body>
     </html>
   `);
-  printWindow.document.close();
-  } catch (e) {
-    console.warn('Error al abrir ventana de impresión:', e);
-    window.print();
-  }
+  doc.close();
+
+  // Clean up iframe after printing
+  setTimeout(() => {
+    if (document.body.contains(iframe)) {
+      document.body.removeChild(iframe);
+    }
+  }, 2000);
 }

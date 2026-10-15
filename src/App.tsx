@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { AppSettings, ExpenseRecord, FidelisCustomerProfile, Product, SaleTicket } from './types';
+import { AppSettings, ExpenseRecord, FidelisCustomerProfile, Product, RestockRecord, SaleTicket } from './types';
 import {
   loadProducts,
   saveProducts,
@@ -9,6 +9,9 @@ import {
   saveTickets,
   loadExpenses,
   saveExpenses,
+  loadRestocks,
+  saveRestocks,
+  addAbonoToRestock,
   getDebtorsSummary,
 } from './services/storage';
 import {
@@ -24,6 +27,7 @@ import { Header } from './components/Header';
 import { POSModule } from './components/POSModule';
 import { TicketsHistoryModule } from './components/TicketsHistoryModule';
 import { FiadosModule } from './components/FiadosModule';
+import { RestockModule } from './components/RestockModule';
 import { InventoryModule } from './components/InventoryModule';
 import { SettingsModule } from './components/SettingsModule';
 import { FidelisDirectoryModal } from './components/FidelisDirectoryModal';
@@ -32,10 +36,10 @@ import { CheckCircle, AlertCircle } from 'lucide-react';
 import { voidOrDeleteTicket } from './services/storage';
 
 export default function App() {
-  const [activeTab, setActiveTab] = useState<'pos' | 'tickets' | 'fiados' | 'inventory' | 'settings'>(() => {
+  const [activeTab, setActiveTab] = useState<'pos' | 'tickets' | 'fiados' | 'restocks' | 'inventory' | 'settings'>(() => {
     if (typeof window !== 'undefined') {
       const tabParam = new URLSearchParams(window.location.search).get('tab');
-      if (tabParam === 'pos' || tabParam === 'tickets' || tabParam === 'fiados' || tabParam === 'inventory' || tabParam === 'settings') {
+      if (tabParam === 'pos' || tabParam === 'tickets' || tabParam === 'fiados' || tabParam === 'restocks' || tabParam === 'inventory' || tabParam === 'settings') {
         return tabParam;
       }
     }
@@ -44,6 +48,7 @@ export default function App() {
   const [products, setProducts] = useState<Product[]>(() => loadProducts());
   const [tickets, setTickets] = useState<SaleTicket[]>(() => loadTickets());
   const [expenses, setExpenses] = useState<ExpenseRecord[]>(() => loadExpenses());
+  const [restocks, setRestocks] = useState<RestockRecord[]>(() => loadRestocks());
   const [settings, setSettings] = useState<AppSettings>(() => loadSettings());
   const [fidelisProfiles, setFidelisProfiles] = useState<Record<string, FidelisCustomerProfile>>(() =>
     loadFidelisProfiles()
@@ -59,12 +64,14 @@ export default function App() {
       if (e.detail?.type === 'products') setProducts(loadProducts());
       if (e.detail?.type === 'tickets') setTickets(loadTickets());
       if (e.detail?.type === 'expenses') setExpenses(loadExpenses());
+      if (e.detail?.type === 'restocks') setRestocks(loadRestocks());
       if (e.detail?.type === 'settings') setSettings(loadSettings());
       if (e.detail?.type === 'fidelis') setFidelisProfiles(loadFidelisProfiles());
       if (e.detail?.type === 'all') {
         setProducts(loadProducts());
         setTickets(loadTickets());
         setExpenses(loadExpenses());
+        setRestocks(loadRestocks());
         setSettings(loadSettings());
         setFidelisProfiles(loadFidelisProfiles());
       }
@@ -75,6 +82,7 @@ export default function App() {
         setProducts(loadProducts());
         setTickets(loadTickets());
         setExpenses(loadExpenses());
+        setRestocks(loadRestocks());
         setSettings(loadSettings());
         setFidelisProfiles(loadFidelisProfiles());
       }
@@ -197,6 +205,42 @@ export default function App() {
     showToast('Egreso eliminado.');
   }, []);
 
+  // Update restocks
+  const handleUpdateRestocks = useCallback((newRestocks: RestockRecord[]) => {
+    setRestocks(newRestocks);
+    saveRestocks(newRestocks);
+  }, []);
+
+  // Make an abono to a supplier restock account
+  const handleAbonoToRestock = useCallback(
+    (
+      restockId: string,
+      amountUSD: number,
+      method: 'cash_usd' | 'cash_ves' | 'pago_movil' | 'punto' | 'transferencia',
+      reference?: string,
+      notes?: string
+    ) => {
+      try {
+        const result = addAbonoToRestock(
+          restockId,
+          amountUSD,
+          method,
+          reference || '',
+          notes || '',
+          restocks,
+          expenses,
+          settings
+        );
+        setRestocks(result.updatedRestocks);
+        setExpenses(result.updatedExpenses);
+        showToast(`Abono a proveedor registrado con éxito ($${amountUSD.toFixed(2)} USD).`);
+      } catch (err: any) {
+        showToast(`Error: ${err?.message || 'No se pudo registrar el abono'}`);
+      }
+    },
+    [restocks, expenses, settings]
+  );
+
   // Calculate Debtors metrics for Header badge
   const debtorsSummary = useMemo(() => {
     return getDebtorsSummary(tickets, settings.bcvRate);
@@ -205,6 +249,11 @@ export default function App() {
   const totalDebtUSD = useMemo(() => {
     return debtorsSummary.reduce((sum, d) => sum + d.totalDebtUSD, 0);
   }, [debtorsSummary]);
+
+  // Calculate pending supplier debt count
+  const pendingSuppliersCount = useMemo(() => {
+    return restocks.filter((r) => r.paymentCondition === 'credito' && !r.isPaid && r.pendingUSD > 0.001).length;
+  }, [restocks]);
 
   // Unique customer directory for POS auto-complete
   const existingCustomers = useMemo(() => {
@@ -326,6 +375,7 @@ export default function App() {
         onUpdateBcvRate={handleUpdateBcvRate}
         onUpdatePreferentialRate={handleUpdatePreferentialRate}
         debtorsCount={debtorsSummary.length}
+        pendingSuppliersCount={pendingSuppliersCount}
         totalTicketsCount={tickets.length}
         totalDebtUSD={totalDebtUSD}
         fidelisRewardsReadyCount={fidelisRewardsReadyCount}
@@ -351,12 +401,15 @@ export default function App() {
           <TicketsHistoryModule
             tickets={tickets}
             expenses={expenses}
+            restocks={restocks}
             products={products}
             settings={settings}
             onDeleteTicket={handleDeleteTicket}
             onAddExpense={handleAddExpense}
             onDeleteExpense={handleDeleteExpense}
+            onAbonoToRestock={handleAbonoToRestock}
             onTicketsImported={handleTicketsImported}
+            onNavigateToRestocks={() => setActiveTab('restocks')}
           />
         )}
 
@@ -367,6 +420,22 @@ export default function App() {
             settings={settings}
             onUpdateTickets={handleUpdateTickets}
             onUpdateProducts={handleUpdateProducts}
+          />
+        )}
+
+        {activeTab === 'restocks' && (
+          <RestockModule
+            products={products}
+            restocks={restocks}
+            expenses={expenses}
+            settings={settings}
+            onUpdateProducts={handleUpdateProducts}
+            onUpdateRestocks={handleUpdateRestocks}
+            onUpdateExpenses={(newExpenses) => {
+              setExpenses(newExpenses);
+              saveExpenses(newExpenses);
+            }}
+            onShowToast={showToast}
           />
         )}
 
