@@ -16,8 +16,10 @@ import {
   FileText,
   User,
   History,
+  Warehouse,
+  Store,
 } from 'lucide-react';
-import { AppSettings, MermaReason, MermaRecord, Product, ProductCategory } from '../types';
+import { AppSettings, MermaLocation, MermaReason, MermaRecord, Product, ProductCategory } from '../types';
 import {
   formatUSD,
   formatVES,
@@ -58,6 +60,7 @@ export const MermaAdjustmentModal: React.FC<MermaAdjustmentModalProps> = ({
   const [inputUnitMode, setInputUnitMode] = useState<'grams' | 'kilos'>('grams');
   const [quantityInput, setQuantityInput] = useState<string>('');
   const [selectedReason, setSelectedReason] = useState<MermaReason>('Secado / Pérdida de humedad');
+  const [selectedLocation, setSelectedLocation] = useState<MermaLocation>('Mostrador / Exhibidor');
   const [notes, setNotes] = useState<string>('');
   const [performedBy, setPerformedBy] = useState<string>('Encargado de Charcutería');
   const [formError, setFormError] = useState<string | null>(null);
@@ -198,6 +201,7 @@ export const MermaAdjustmentModal: React.FC<MermaAdjustmentModalProps> = ({
           productId: selectedProduct.id,
           quantity: parsedQuantity,
           reason: selectedReason,
+          location: selectedLocation,
           notes: notes.trim(),
           performedBy: performedBy.trim(),
         },
@@ -561,7 +565,67 @@ export const MermaAdjustmentModal: React.FC<MermaAdjustmentModalProps> = ({
             </div>
           </div>
 
-          {/* 4. Real-time Impact Simulator Box */}
+          {/* 4. Multi-Almacén / Ubicación Física */}
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <label className="text-xs font-bold text-slate-300 block">
+                4. Ubicación / Almacén donde ocurrió la Merma
+              </label>
+              <span className="text-[10px] text-amber-400 font-semibold uppercase tracking-wider">
+                Multi-Almacén Charcutería
+              </span>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+              {[
+                {
+                  id: 'Mostrador / Exhibidor',
+                  title: 'Mostrador / Exhibidor',
+                  desc: 'Vitrina refrigerada frontal (secado por flujo de aire y apertura)',
+                  icon: Store,
+                },
+                {
+                  id: 'Cava Cuarto / Almacén',
+                  title: 'Cava Cuarto / Almacén',
+                  desc: 'Cava de reposo de piezas enteras en frío estático',
+                  icon: Warehouse,
+                },
+                {
+                  id: 'Mesa de Rebanado / Despacho',
+                  title: 'Mesa de Rebanado',
+                  desc: 'Área de cuchillas (recortes de inicio/fin de barra)',
+                  icon: Scissors,
+                },
+              ].map((loc) => {
+                const Icon = loc.icon;
+                const isSelected = selectedLocation === loc.id;
+                return (
+                  <button
+                    key={loc.id}
+                    type="button"
+                    onClick={() => setSelectedLocation(loc.id as MermaLocation)}
+                    className={`p-2.5 rounded-2xl text-left border transition flex flex-col justify-between gap-1.5 cursor-pointer ${
+                      isSelected
+                        ? 'bg-amber-500/15 border-amber-500/60 shadow-sm'
+                        : 'bg-slate-950 border-slate-800/80 hover:bg-slate-800/40 text-slate-400'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2">
+                      <Icon className={`w-4 h-4 ${isSelected ? 'text-amber-400' : 'text-slate-500'}`} />
+                      <span className={`text-xs font-bold ${isSelected ? 'text-white' : 'text-slate-300'}`}>
+                        {loc.title}
+                      </span>
+                    </div>
+                    <span className="text-[10px] text-slate-500 leading-tight">
+                      {loc.desc}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* 5. Real-time Impact Simulator Box */}
           {selectedProduct && parsedQuantity > 0 && (
             <div className="p-4 rounded-2xl bg-amber-950/20 border border-amber-500/30 space-y-2.5 animate-in fade-in duration-150">
               <div className="flex items-center justify-between">
@@ -692,6 +756,9 @@ export const MermaAdjustmentModal: React.FC<MermaAdjustmentModalProps> = ({
                         <span className="font-bold text-white">{m.productName}</span>
                         <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-amber-500/20 text-amber-300">
                           {m.reason}
+                        </span>
+                        <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-slate-800 text-slate-300 border border-slate-700">
+                          {m.location || 'Mostrador / Exhibidor'}
                         </span>
                       </div>
                       <div className="text-[10px] text-slate-400 font-mono mt-0.5">

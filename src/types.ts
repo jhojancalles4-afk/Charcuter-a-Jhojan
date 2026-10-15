@@ -316,6 +316,11 @@ export type MermaReason =
   | 'Daño / Vencimiento'
   | 'Ajuste de inventario físico';
 
+export type MermaLocation =
+  | 'Mostrador / Exhibidor'
+  | 'Cava Cuarto / Almacén'
+  | 'Mesa de Rebanado / Despacho';
+
 export interface MermaRecord {
   id: string;
   date: string; // ISO string
@@ -329,6 +334,7 @@ export interface MermaRecord {
   totalCostVES: number;
   bcvRate: number;
   reason: MermaReason;
+  location?: MermaLocation;
   notes?: string;
   performedBy?: string;
 }
@@ -408,6 +414,13 @@ export interface SystemPandLData {
   mermasCount: number;
   mermasBreakdown?: {
     reason: MermaReason;
+    totalUSD: number;
+    totalVES: number;
+    count: number;
+    weightKG: number;
+  }[];
+  mermasByLocation?: {
+    location: MermaLocation;
     totalUSD: number;
     totalVES: number;
     count: number;

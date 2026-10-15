@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useMemo } from 'react';
 import {
   X,
   HardDrive,
@@ -16,8 +16,14 @@ import {
   Sparkles,
   ArrowRight,
   ClipboardPaste,
+  FileSpreadsheet,
+  Calendar,
+  Table,
+  Check,
+  Scissors,
+  Package,
 } from 'lucide-react';
-import { AppSettings, ExpenseRecord, Product, SaleTicket } from '../types';
+import { AppSettings, ExpenseRecord, MermaRecord, Product, SaleTicket } from '../types';
 import {
   exportGoogleDriveBackupFile,
   importDatabaseBackup,
@@ -27,9 +33,15 @@ import {
   loadProducts,
   loadSettings,
   loadExpenses,
+  loadMermas,
   getDebtorsSummary,
   exportDatabaseBackupString,
   sendTelegramBackupFile,
+  exportMonthlySales,
+  exportDebtors,
+  exportMermas,
+  exportInventoryToCSV,
+  getAvailableTicketMonths,
 } from '../services/storage';
 
 interface GoogleBackupModalProps {
@@ -40,6 +52,7 @@ interface GoogleBackupModalProps {
   products?: Product[];
   settings?: AppSettings;
   expenses?: ExpenseRecord[];
+  mermas?: MermaRecord[];
 }
 
 export const GoogleBackupModal: React.FC<GoogleBackupModalProps> = ({
@@ -50,8 +63,10 @@ export const GoogleBackupModal: React.FC<GoogleBackupModalProps> = ({
   products,
   settings,
   expenses,
+  mermas,
 }) => {
-  const [activeTab, setActiveTab] = useState<'drive' | 'telegram'>('drive');
+  const [activeTab, setActiveTab] = useState<'drive' | 'telegram' | 'excel'>('drive');
+  const [selectedMonthKey, setSelectedMonthKey] = useState<string>('');
   const [statusMessage, setStatusMessage] = useState<{ type: 'success' | 'error' | 'info'; text: string } | null>(null);
 
   // Drive restore input ref
@@ -74,7 +89,9 @@ export const GoogleBackupModal: React.FC<GoogleBackupModalProps> = ({
   const currentProducts = products && products.length > 0 ? products : loadProducts();
   const currentSettings = settings ? settings : loadSettings();
   const currentExpenses = expenses && expenses.length > 0 ? expenses : loadExpenses();
+  const currentMermas = mermas && mermas.length > 0 ? mermas : loadMermas();
   const currentDebtors = getDebtorsSummary(currentTickets, currentSettings.bcvRate);
+  const availableMonths = useMemo(() => getAvailableTicketMonths(currentTickets), [currentTickets]);
 
   const telegramPackage = generateUnifiedTelegramBackup({
     tickets: currentTickets,
@@ -312,7 +329,20 @@ export const GoogleBackupModal: React.FC<GoogleBackupModalProps> = ({
             }`}
           >
             <Send className="w-4 h-4" />
-            <span>Telegram (Respaldo & Restaurar)</span>
+            <span>Telegram (Respaldo)</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveTab('excel')}
+            className={`flex-1 py-2 px-3 rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition cursor-pointer ${
+              activeTab === 'excel'
+                ? 'bg-emerald-600 text-white shadow-md shadow-emerald-950/50'
+                : 'text-slate-400 hover:text-slate-200'
+            }`}
+          >
+            <FileSpreadsheet className="w-4 h-4" />
+            <span>Excel / CSV Contable</span>
           </button>
         </div>
 
@@ -515,6 +545,254 @@ export const GoogleBackupModal: React.FC<GoogleBackupModalProps> = ({
                   <span>{isProcessingTelegram ? 'Procesando...' : 'Procesar y Restaurar desde Telegram'}</span>
                 </button>
               </form>
+            </div>
+          </div>
+        )}
+
+        {/* TAB 3: EXCEL / CSV CONTABLE */}
+        {activeTab === 'excel' && (
+          <div className="space-y-4 animate-in fade-in duration-150">
+            {/* Overview */}
+            <div className="p-3.5 rounded-2xl bg-emerald-950/20 border border-emerald-900/40 text-xs text-slate-300 flex items-start gap-2.5">
+              <FileSpreadsheet className="w-5 h-5 text-emerald-400 shrink-0 mt-0.5" />
+              <div className="space-y-1">
+                <span className="font-bold text-slate-100 block">Exportación para Contabilidad Externa y Administración</span>
+                <p className="leading-relaxed">
+                  Descarga tus reportes en formatos <strong>.xls (Excel)</strong> o <strong>.csv (con UTF-8 BOM)</strong>. Abren inmediatamente con doble clic en <strong>Microsoft Excel</strong>, Google Sheets o LibreOffice con acentos, tildes y formato bimonetario (USD / Bs. BCV).
+                </p>
+              </div>
+            </div>
+
+            {/* Grid of 4 Export Modules */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-h-[58vh] overflow-y-auto pr-1">
+              {/* 1. Ventas del Mes */}
+              <div className="p-4 rounded-2xl bg-slate-950 border border-slate-800 flex flex-col justify-between space-y-3">
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold text-slate-100 flex items-center gap-1.5">
+                      <Calendar className="w-4 h-4 text-emerald-400" />
+                      <span>1. Ventas del Mes</span>
+                    </span>
+                    <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                      {currentTickets.length} ventas
+                    </span>
+                  </div>
+
+                  <p className="text-[11px] text-slate-400 leading-tight">
+                    Facturas, método de pago, desglose por gramaje/kilos, tasa BCV y montos cobrados vs crédito.
+                  </p>
+
+                  {/* Month Selector */}
+                  <div>
+                    <label className="text-[10px] font-bold text-slate-400 block mb-1">
+                      Período a exportar:
+                    </label>
+                    <select
+                      value={selectedMonthKey}
+                      onChange={(e) => setSelectedMonthKey(e.target.value)}
+                      className="w-full bg-slate-900 border border-slate-700 rounded-xl px-2.5 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-emerald-500"
+                    >
+                      <option value="">Todas las ventas históricas ({currentTickets.length})</option>
+                      {availableMonths.map((m) => (
+                        <option key={m.key} value={m.key}>
+                          {m.label} ({m.count} venta{m.count > 1 ? 's' : ''})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-2 pt-1 border-t border-slate-800">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      exportMonthlySales(currentTickets, currentSettings, selectedMonthKey, 'excel');
+                      setStatusMessage({
+                        type: 'success',
+                        text: '¡Archivo Excel (.xls) de ventas generado y descargado exitosamente!',
+                      });
+                    }}
+                    className="py-2 px-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-[11px] font-bold flex items-center justify-center gap-1.5 transition shadow-sm cursor-pointer"
+                  >
+                    <FileSpreadsheet className="w-3.5 h-3.5" />
+                    <span>Excel (.xls)</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      exportMonthlySales(currentTickets, currentSettings, selectedMonthKey, 'csv');
+                      setStatusMessage({
+                        type: 'success',
+                        text: '¡Archivo CSV de ventas generado y descargado exitosamente!',
+                      });
+                    }}
+                    className="py-2 px-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-[11px] font-bold flex items-center justify-center gap-1.5 transition border border-slate-700 cursor-pointer"
+                  >
+                    <Download className="w-3.5 h-3.5" />
+                    <span>CSV (.csv)</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* 2. Cartera de Deudores / Fiados */}
+              <div className="p-4 rounded-2xl bg-slate-950 border border-slate-800 flex flex-col justify-between space-y-3">
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold text-slate-100 flex items-center gap-1.5">
+                      <Table className="w-4 h-4 text-rose-400" />
+                      <span>2. Cartera de Deudores (Fiados)</span>
+                    </span>
+                    <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-rose-500/10 text-rose-400 border border-rose-500/20">
+                      {currentDebtors.length} deudores
+                    </span>
+                  </div>
+
+                  <p className="text-[11px] text-slate-400 leading-tight">
+                    Lista completa de clientes con saldo pendiente, teléfonos, cédulas, antigüedad de deuda y tickets vinculados.
+                  </p>
+
+                  <div className="p-2 rounded-xl bg-slate-900 border border-slate-800 flex items-center justify-between font-mono text-[11px]">
+                    <span className="text-slate-400">Total por cobrar:</span>
+                    <span className="text-rose-400 font-bold">
+                      ${currentDebtors.reduce((sum, d) => sum + d.totalDebtUSD, 0).toFixed(2)} USD
+                    </span>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-2 pt-1 border-t border-slate-800">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      exportDebtors(currentDebtors, currentSettings, 'excel');
+                      setStatusMessage({
+                        type: 'success',
+                        text: '¡Cartera de deudores exportada a Excel (.xls) con éxito!',
+                      });
+                    }}
+                    className="py-2 px-2.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-[11px] font-bold flex items-center justify-center gap-1.5 transition shadow-sm cursor-pointer"
+                  >
+                    <FileSpreadsheet className="w-3.5 h-3.5" />
+                    <span>Excel (.xls)</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      exportDebtors(currentDebtors, currentSettings, 'csv');
+                      setStatusMessage({
+                        type: 'success',
+                        text: '¡Cartera de deudores exportada a CSV con éxito!',
+                      });
+                    }}
+                    className="py-2 px-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-[11px] font-bold flex items-center justify-center gap-1.5 transition border border-slate-700 cursor-pointer"
+                  >
+                    <Download className="w-3.5 h-3.5" />
+                    <span>CSV (.csv)</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* 3. Mermas Físicas & Multi-Almacén */}
+              <div className="p-4 rounded-2xl bg-slate-950 border border-slate-800 flex flex-col justify-between space-y-3">
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold text-slate-100 flex items-center gap-1.5">
+                      <Scissors className="w-4 h-4 text-amber-400" />
+                      <span>3. Mermas por Manipulación</span>
+                    </span>
+                    <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-400 border border-amber-500/20">
+                      {currentMermas.length} registros
+                    </span>
+                  </div>
+
+                  <p className="text-[11px] text-slate-400 leading-tight">
+                    Pérdidas de humedad (secado en mostrador), recortes no vendibles, daño o ajuste físico desglosado por almacén.
+                  </p>
+
+                  <div className="p-2 rounded-xl bg-slate-900 border border-slate-800 flex items-center justify-between font-mono text-[11px]">
+                    <span className="text-slate-400">Pérdida en costo P&L:</span>
+                    <span className="text-amber-400 font-bold">
+                      -${currentMermas.reduce((sum, m) => sum + m.totalCostUSD, 0).toFixed(2)} USD
+                    </span>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-2 pt-1 border-t border-slate-800">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      exportMermas(currentMermas, currentSettings, 'excel');
+                      setStatusMessage({
+                        type: 'success',
+                        text: '¡Reporte de mermas exportado a Excel (.xls) con éxito!',
+                      });
+                    }}
+                    className="py-2 px-2.5 rounded-xl bg-amber-600 hover:bg-amber-500 text-white text-[11px] font-bold flex items-center justify-center gap-1.5 transition shadow-sm cursor-pointer"
+                  >
+                    <FileSpreadsheet className="w-3.5 h-3.5" />
+                    <span>Excel (.xls)</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      exportMermas(currentMermas, currentSettings, 'csv');
+                      setStatusMessage({
+                        type: 'success',
+                        text: '¡Reporte de mermas exportado a CSV con éxito!',
+                      });
+                    }}
+                    className="py-2 px-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-[11px] font-bold flex items-center justify-center gap-1.5 transition border border-slate-700 cursor-pointer"
+                  >
+                    <Download className="w-3.5 h-3.5" />
+                    <span>CSV (.csv)</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* 4. Inventario, Costos & Márgenes */}
+              <div className="p-4 rounded-2xl bg-slate-950 border border-slate-800 flex flex-col justify-between space-y-3">
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold text-slate-100 flex items-center gap-1.5">
+                      <Package className="w-4 h-4 text-sky-400" />
+                      <span>4. Catálogo e Inventario</span>
+                    </span>
+                    <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-sky-500/10 text-sky-400 border border-sky-500/20">
+                      {currentProducts.length} productos
+                    </span>
+                  </div>
+
+                  <p className="text-[11px] text-slate-400 leading-tight">
+                    Existencias en KG y UN, costos unitarios, precios de venta en USD/Bs, márgenes de ganancia y valor de stock.
+                  </p>
+
+                  <div className="p-2 rounded-xl bg-slate-900 border border-slate-800 flex items-center justify-between font-mono text-[11px]">
+                    <span className="text-slate-400">Inversión en costo:</span>
+                    <span className="text-emerald-400 font-bold">
+                      ${currentProducts.reduce((sum, p) => sum + p.stock * (p.costUSD || p.priceUSD * 0.72), 0).toFixed(2)} USD
+                    </span>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-2 pt-1 border-t border-slate-800">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      exportInventoryToCSV(currentProducts, currentSettings);
+                      setStatusMessage({
+                        type: 'success',
+                        text: '¡Catálogo de inventario exportado en formato Excel / CSV con éxito!',
+                      });
+                    }}
+                    className="col-span-2 py-2 px-2.5 rounded-xl bg-sky-600 hover:bg-sky-500 text-white text-[11px] font-bold flex items-center justify-center gap-1.5 transition shadow-sm cursor-pointer"
+                  >
+                    <Download className="w-3.5 h-3.5" />
+                    <span>Descargar Catálogo (Excel / CSV)</span>
+                  </button>
+                </div>
+              </div>
             </div>
           </div>
         )}

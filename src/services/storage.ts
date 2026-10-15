@@ -5,6 +5,7 @@ import {
   InventoryReportSummary,
   MermaRecord,
   MermaReason,
+  MermaLocation,
   PaymentAbono,
   Product,
   RestockAbono,
@@ -199,6 +200,7 @@ export interface ProcessMermaInput {
   productId: string;
   quantity: number;
   reason: MermaReason;
+  location?: MermaLocation;
   notes?: string;
   performedBy?: string;
 }
@@ -245,6 +247,7 @@ export function processNewMerma(
     totalCostVES,
     bcvRate: settings.bcvRate,
     reason: input.reason,
+    location: input.location || 'Mostrador / Exhibidor',
     notes: input.notes?.trim() || undefined,
     performedBy: input.performedBy?.trim() || 'Encargado de Charcutería',
   };
@@ -2152,6 +2155,23 @@ export function buildSystemPandLReport(
     weightKG: Math.round(d.weightKG * 1000) / 1000,
   }));
 
+  const mermaLocationMap = new Map<MermaLocation, { totalUSD: number; count: number; weightKG: number }>();
+  for (const m of periodMermas) {
+    const loc: MermaLocation = m.location || 'Mostrador / Exhibidor';
+    const locCurr = mermaLocationMap.get(loc) || { totalUSD: 0, count: 0, weightKG: 0 };
+    locCurr.totalUSD += m.totalCostUSD;
+    locCurr.count++;
+    if (m.unit === 'KG') locCurr.weightKG += m.quantity;
+    mermaLocationMap.set(loc, locCurr);
+  }
+  const mermasByLocation = Array.from(mermaLocationMap.entries()).map(([location, d]) => ({
+    location,
+    totalUSD: Math.round(d.totalUSD * 100) / 100,
+    totalVES: Math.round(d.totalUSD * settings.bcvRate * 100) / 100,
+    count: d.count,
+    weightKG: Math.round(d.weightKG * 1000) / 1000,
+  }));
+
   // 4. Utilidad Bruta = Ventas Totales - Costo de Mercancía Vendida
   const grossProfitUSD = Math.round((totalSalesUSD - costOfGoodsSoldUSD) * 100) / 100;
   const grossProfitVES = Math.round((totalSalesVES - costOfGoodsSoldVES) * 100) / 100;
@@ -2245,6 +2265,7 @@ export function buildSystemPandLReport(
     totalMermaUnitsUN,
     mermasCount: periodMermas.length,
     mermasBreakdown,
+    mermasByLocation,
 
     currentAccountsReceivableUSD: Math.round(currentAccountsReceivableUSD * 100) / 100,
     currentAccountsReceivableVES,
@@ -2336,6 +2357,140 @@ function escapeCSVField(value: any): string {
   if (value === null || value === undefined) return '""';
   const str = String(value).replace(/"/g, '""');
   return `"${str}"`;
+}
+
+function escapeXML(str: any): string {
+  if (str === null || str === undefined) return '';
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&apos;');
+}
+
+export function downloadExcelXMLFile(
+  filename: string,
+  sheets: { name: string; headers: string[]; rows: (string | number)[][] }[]
+): void {
+  let xml = `<?xml version="1.0" encoding="UTF-8"?>
+<?mso-application progid="Excel.Sheet"?>
+<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet"
+ xmlns:o="urn:schemas-microsoft-com:office:office"
+ xmlns:x="urn:schemas-microsoft-com:office:excel"
+ xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet"
+ xmlns:html="http://www.w3.org/TR/REC-html40">
+ <DocumentProperties xmlns="urn:schemas-microsoft-com:office:office">
+  <Author>Charcutería Jhojan POS</Author>
+  <Company>Charcutería Jhojan C.A.</Company>
+  <Created>${new Date().toISOString()}</Created>
+ </DocumentProperties>
+ <Styles>
+  <Style ss:ID="Default" ss:Name="Normal">
+   <Alignment ss:Vertical="Center"/>
+   <Borders/>
+   <Font ss:FontName="Calibri" ss:Size="11" ss:Color="#000000"/>
+   <Interior/>
+   <NumberFormat/>
+   <Protection/>
+  </Style>
+  <Style ss:ID="HeaderStyle">
+   <Alignment ss:Horizontal="Center" ss:Vertical="Center"/>
+   <Borders>
+    <Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="2" ss:Color="#0F172A"/>
+   </Borders>
+   <Font ss:FontName="Calibri" ss:Size="11" ss:Color="#FFFFFF" ss:Bold="1"/>
+   <Interior ss:Color="#1E293B" ss:Pattern="Solid"/>
+  </Style>
+  <Style ss:ID="NumberCell">
+   <Alignment ss:Horizontal="Right" ss:Vertical="Center"/>
+   <NumberFormat ss:Format="#,##0.00"/>
+  </Style>
+  <Style ss:ID="TextCell">
+   <Alignment ss:Horizontal="Left" ss:Vertical="Center"/>
+  </Style>
+ </Styles>
+`;
+
+  for (const sheet of sheets) {
+    const cleanName = escapeXML(sheet.name.slice(0, 31));
+    xml += ` <Worksheet ss:Name="${cleanName}">\n  <Table>\n`;
+    
+    // Header row
+    xml += `   <Row ss:Height="24" ss:StyleID="HeaderStyle">\n`;
+    for (const h of sheet.headers) {
+      xml += `    <Cell><Data ss:Type="String">${escapeXML(h)}</Data></Cell>\n`;
+    }
+    xml += `   </Row>\n`;
+
+    // Data rows
+    for (const row of sheet.rows) {
+      xml += `   <Row ss:Height="19">\n`;
+      for (const val of row) {
+        if (typeof val === 'number') {
+          xml += `    <Cell ss:StyleID="NumberCell"><Data ss:Type="Number">${val}</Data></Cell>\n`;
+        } else {
+          xml += `    <Cell ss:StyleID="TextCell"><Data ss:Type="String">${escapeXML(val)}</Data></Cell>\n`;
+        }
+      }
+      xml += `   </Row>\n`;
+    }
+
+    xml += `  </Table>\n </Worksheet>\n`;
+  }
+
+  xml += `</Workbook>`;
+
+  const cleanFilename = filename.toLowerCase().endsWith('.xls') || filename.toLowerCase().endsWith('.xlsx')
+    ? filename
+    : `${filename}.xls`;
+
+  const blob = new Blob([xml], { type: 'application/vnd.ms-excel;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = cleanFilename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+export function getAvailableTicketMonths(tickets: SaleTicket[]): {
+  key: string; // "2026-10"
+  year: number;
+  month: number;
+  label: string; // "Octubre 2026"
+  count: number;
+}[] {
+  const map = new Map<string, { year: number; month: number; label: string; count: number }>();
+  const monthNames = [
+    'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
+    'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre',
+  ];
+
+  for (const t of tickets) {
+    const d = new Date(t.date);
+    const year = d.getFullYear();
+    const month = d.getMonth() + 1; // 1-12
+    const key = `${year}-${String(month).padStart(2, '0')}`;
+    const existing = map.get(key);
+    if (existing) {
+      existing.count++;
+    } else {
+      map.set(key, {
+        year,
+        month,
+        label: `${monthNames[month - 1]} ${year}`,
+        count: 1,
+      });
+    }
+  }
+
+  // Sort descending (most recent first)
+  return Array.from(map.entries())
+    .sort((a, b) => b[0].localeCompare(a[0]))
+    .map(([key, val]) => ({ key, ...val }));
 }
 
 /**
@@ -2521,6 +2676,255 @@ export function exportInventoryToCSV(
   const csvContent = [headers.join(';'), ...rows].join('\r\n');
   const dateStr = new Date().toISOString().slice(0, 10);
   downloadCSVFile(`inventario-catalogo-${dateStr}.csv`, csvContent);
+}
+
+/**
+ * Exporta las ventas del mes o históricas en formato Microsoft Excel (.xls) o CSV (.csv) con BOM.
+ */
+export function exportMonthlySales(
+  tickets: SaleTicket[],
+  settings: AppSettings,
+  monthKey?: string,
+  format: 'excel' | 'csv' = 'excel'
+): void {
+  let targetTickets = tickets;
+  let periodLabel = 'todas-las-ventas';
+
+  if (monthKey && monthKey !== 'all') {
+    const [yearStr, monthStr] = monthKey.split('-');
+    const year = parseInt(yearStr, 10);
+    const month = parseInt(monthStr, 10);
+    targetTickets = tickets.filter((t) => {
+      const d = new Date(t.date);
+      return d.getFullYear() === year && d.getMonth() + 1 === month;
+    });
+    periodLabel = `mes-${monthKey}`;
+  }
+
+  const headers = [
+    'Nro Factura',
+    'Fecha',
+    'Hora',
+    'Cliente',
+    'Cedula / RIF',
+    'Telefono',
+    'Metodo de Pago',
+    'Estado',
+    'Total USD',
+    'Tasa BCV',
+    'Total VES',
+    'Cobrado USD',
+    'Saldo Pendiente USD',
+    'Cant. Articulos',
+    'Detalle de Productos y Gramajes',
+    'Notas / Motivo Anulacion',
+  ];
+
+  const methodTranslations: Record<string, string> = {
+    cash_usd: 'Efectivo USD ($)',
+    cash_ves: 'Efectivo Bs.',
+    punto: 'Punto de Venta',
+    pago_movil: 'Pago Movil',
+    fiado: 'Fiado (Credito)',
+    mixed: 'Pago Mixto (Combinado)',
+  };
+
+  const statusTranslations: Record<string, string> = {
+    paid: 'Cobrado',
+    pending: 'Pendiente (Fiado)',
+    partially_paid: 'Abonado Parcial',
+    voided: 'ANULADO',
+  };
+
+  if (format === 'excel') {
+    const rows = targetTickets.map((t) => {
+      const d = new Date(t.date);
+      const dateStr = d.toLocaleDateString('es-VE');
+      const timeStr = d.toLocaleTimeString('es-VE', { hour: '2-digit', minute: '2-digit' });
+      const itemsSummary = t.items
+        .map(
+          (i) =>
+            `${i.product.name} (${i.product.unit === 'KG' ? `${i.quantity.toFixed(3)} KG` : `${i.quantity} UN`} @ $${i.unitPriceUSD.toFixed(2)})`
+        )
+        .join('; ');
+
+      const totalAbonado = (t.abonos || []).reduce((sum, a) => sum + a.amountUSD, 0);
+      const cobradoUSD = t.status === 'paid' ? t.totalUSD : totalAbonado;
+
+      return [
+        t.ticketNumber,
+        dateStr,
+        timeStr,
+        t.customerName || 'Consumidor Final',
+        t.customerCedula || 'S/C',
+        t.customerPhone || 'S/T',
+        methodTranslations[t.paymentMethod] || t.paymentMethod,
+        t.isVoided ? 'ANULADO' : statusTranslations[t.status] || t.status,
+        t.totalUSD,
+        t.bcvRate,
+        t.totalVES,
+        cobradoUSD,
+        t.pendingUSD || 0,
+        t.items.length,
+        itemsSummary,
+        t.isVoided ? `ANULADO: ${t.voidReason || 'Sin motivo'}` : t.notes || '',
+      ];
+    });
+
+    const dateStr = new Date().toISOString().slice(0, 10);
+    downloadExcelXMLFile(`ventas-charcuteria-${periodLabel}-${dateStr}.xls`, [
+      {
+        name: 'Ventas Mensuales',
+        headers,
+        rows,
+      },
+    ]);
+  } else {
+    exportTicketsToCSV(targetTickets, settings, periodLabel);
+  }
+}
+
+/**
+ * Exporta la lista de deudores y cuentas por cobrar en formato Excel (.xls) o CSV (.csv).
+ */
+export function exportDebtors(
+  debtors: DebtorCustomer[],
+  settings: AppSettings,
+  format: 'excel' | 'csv' = 'excel'
+): void {
+  if (format === 'excel') {
+    const headers = [
+      'Nombre del Cliente',
+      'Cedula / RIF',
+      'Telefono',
+      'Total Deuda USD',
+      'Tasa BCV',
+      'Total Deuda VES',
+      'Tickets Pendientes',
+      'Ultima Compra',
+      'Facturas Asociadas',
+    ];
+
+    const rows = debtors.map((d) => {
+      const ticketNums = d.tickets.map((t) => `#${t.ticketNumber}`).join(', ');
+      const lastDate = d.lastPurchaseDate
+        ? new Date(d.lastPurchaseDate).toLocaleDateString('es-VE')
+        : 'N/A';
+
+      return [
+        d.name,
+        d.cedula,
+        d.phone,
+        d.totalDebtUSD,
+        settings.bcvRate,
+        d.totalDebtVES,
+        d.tickets.length,
+        lastDate,
+        ticketNums,
+      ];
+    });
+
+    const dateStr = new Date().toISOString().slice(0, 10);
+    downloadExcelXMLFile(`libro-deudores-fiados-${dateStr}.xls`, [
+      {
+        name: 'Cartera de Deudores',
+        headers,
+        rows,
+      },
+    ]);
+  } else {
+    exportDebtorsToCSV(debtors, settings);
+  }
+}
+
+/**
+ * Exporta el registro de mermas físicas y manipulación multi-almacén a Excel (.xls) o CSV (.csv).
+ */
+export function exportMermas(
+  mermas: MermaRecord[],
+  settings: AppSettings,
+  format: 'excel' | 'csv' = 'excel'
+): void {
+  const headers = [
+    'ID Registro',
+    'Fecha',
+    'Hora',
+    'Producto',
+    'Categoria',
+    'Almacen / Ubicacion',
+    'Unidad',
+    'Cantidad Descontada',
+    'Costo Unitario USD',
+    'Perdida Total USD',
+    'Tasa BCV',
+    'Perdida Total VES',
+    'Causa / Motivo',
+    'Responsable',
+    'Observaciones / Notas',
+  ];
+
+  if (format === 'excel') {
+    const rows = mermas.map((m) => {
+      const d = new Date(m.date);
+      const dateStr = d.toLocaleDateString('es-VE');
+      const timeStr = d.toLocaleTimeString('es-VE', { hour: '2-digit', minute: '2-digit' });
+
+      return [
+        m.id,
+        dateStr,
+        timeStr,
+        m.productName,
+        m.category,
+        m.location || 'Mostrador / Exhibidor',
+        m.unit,
+        m.quantity,
+        m.unitCostUSD,
+        m.totalCostUSD,
+        m.bcvRate,
+        m.totalCostVES,
+        m.reason,
+        m.performedBy || 'Encargado de Charcutería',
+        m.notes || '',
+      ];
+    });
+
+    const dateStr = new Date().toISOString().slice(0, 10);
+    downloadExcelXMLFile(`reporte-mermas-charcuteria-${dateStr}.xls`, [
+      {
+        name: 'Mermas y Desperdicios',
+        headers,
+        rows,
+      },
+    ]);
+  } else {
+    const rows = mermas.map((m) => {
+      const d = new Date(m.date);
+      const dateStr = d.toLocaleDateString('es-VE');
+      const timeStr = d.toLocaleTimeString('es-VE', { hour: '2-digit', minute: '2-digit' });
+
+      return [
+        escapeCSVField(m.id),
+        escapeCSVField(dateStr),
+        escapeCSVField(timeStr),
+        escapeCSVField(m.productName),
+        escapeCSVField(m.category),
+        escapeCSVField(m.location || 'Mostrador / Exhibidor'),
+        escapeCSVField(m.unit),
+        escapeCSVField(m.unit === 'KG' ? m.quantity.toFixed(3) : m.quantity.toString()),
+        escapeCSVField(m.unitCostUSD.toFixed(2)),
+        escapeCSVField(m.totalCostUSD.toFixed(2)),
+        escapeCSVField(m.bcvRate.toFixed(2)),
+        escapeCSVField(m.totalCostVES.toFixed(2)),
+        escapeCSVField(m.reason),
+        escapeCSVField(m.performedBy || 'Encargado de Charcutería'),
+        escapeCSVField(m.notes || ''),
+      ].join(';');
+    });
+
+    const csvContent = [headers.join(';'), ...rows].join('\r\n');
+    const dateStr = new Date().toISOString().slice(0, 10);
+    downloadCSVFile(`reporte-mermas-charcuteria-${dateStr}.csv`, csvContent);
+  }
 }
 
 /**

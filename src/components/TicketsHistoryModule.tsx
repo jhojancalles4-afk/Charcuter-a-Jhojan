@@ -23,8 +23,10 @@ import {
   Sparkles,
   Award,
   RefreshCw,
+  FileSpreadsheet,
+  Scissors,
 } from 'lucide-react';
-import { AppSettings, ExpenseRecord, Product, SaleTicket } from '../types';
+import { AppSettings, ExpenseRecord, MermaRecord, Product, RestockRecord, SaleTicket } from '../types';
 import {
   formatQuantity,
   formatUSD,
@@ -32,6 +34,9 @@ import {
   importTicketsBatch,
   generateTelegramThankYou,
   generateTelegramTicketsSummary,
+  exportMonthlySales,
+  exportTicketsToCSV,
+  getAvailableTicketMonths,
 } from '../services/storage';
 import { syncAndSumTicketsToFidelis, loadFidelisProfiles, saveFidelisProfiles } from '../services/fidelis';
 import { ThermalReceiptModal } from './ThermalReceiptModal';
@@ -40,7 +45,6 @@ import { ReporteZView } from './ReporteZView';
 import { SystemPandLView } from './SystemPandLView';
 import { ExpensesView } from './ExpensesView';
 import { NewExpenseModal } from './NewExpenseModal';
-import { RestockRecord } from '../types';
 
 interface TicketsHistoryModuleProps {
   tickets: SaleTicket[];
@@ -48,6 +52,7 @@ interface TicketsHistoryModuleProps {
   restocks?: RestockRecord[];
   products: Product[];
   settings: AppSettings;
+  mermas?: MermaRecord[];
   onDeleteTicket: (ticketId: string, deletePermanently: boolean, reason: string) => void;
   onAddExpense: (expense: Omit<ExpenseRecord, 'id' | 'expenseNumber'>) => void;
   onDeleteExpense: (expenseId: string) => void;
@@ -60,6 +65,7 @@ interface TicketsHistoryModuleProps {
   ) => void;
   onTicketsImported?: (updatedTickets: SaleTicket[], message: string) => void;
   onNavigateToRestocks?: () => void;
+  onOpenMermaModal?: (product?: Product) => void;
 }
 
 export const TicketsHistoryModule: React.FC<TicketsHistoryModuleProps> = ({
@@ -68,18 +74,23 @@ export const TicketsHistoryModule: React.FC<TicketsHistoryModuleProps> = ({
   restocks = [],
   products,
   settings,
+  mermas = [],
   onDeleteTicket,
   onAddExpense,
   onDeleteExpense,
   onAbonoToRestock,
   onTicketsImported,
   onNavigateToRestocks,
+  onOpenMermaModal,
 }) => {
   const [activeSubTab, setActiveSubTab] = useState<'tickets' | 'expenses' | 'report' | 'reporteZ' | 'pandl'>('tickets');
   const [isNewExpenseModalOpen, setIsNewExpenseModalOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [filterType, setFilterType] = useState<'all' | 'paid' | 'pending' | 'mixed' | 'voided'>('all');
+  const [monthFilter, setMonthFilter] = useState<string>('');
   const [selectedTicketForModal, setSelectedTicketForModal] = useState<SaleTicket | null>(null);
+
+  const availableTicketMonths = useMemo(() => getAvailableTicketMonths(tickets), [tickets]);
 
   // File import ref and feedback state
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -141,6 +152,15 @@ export const TicketsHistoryModule: React.FC<TicketsHistoryModuleProps> = ({
       if (filterType === 'mixed' && (t.paymentMethod !== 'mixed' || t.isVoided)) return false;
       if (filterType === 'voided' && !t.isVoided && t.status !== 'voided') return false;
 
+      // Month filter
+      if (monthFilter) {
+        const d = new Date(t.date);
+        const y = d.getFullYear();
+        const m = d.getMonth() + 1;
+        const key = `${y}-${String(m).padStart(2, '0')}`;
+        if (key !== monthFilter) return false;
+      }
+
       // Query filter
       if (!searchQuery.trim()) return true;
       const q = searchQuery.toLowerCase().trim();
@@ -152,7 +172,7 @@ export const TicketsHistoryModule: React.FC<TicketsHistoryModuleProps> = ({
 
       return matchNum || matchName || matchCedula || matchPhone || matchItem;
     });
-  }, [tickets, filterType, searchQuery]);
+  }, [tickets, filterType, searchQuery, monthFilter]);
 
   // Statistics
   const stats = useMemo(() => {
@@ -304,6 +324,8 @@ export const TicketsHistoryModule: React.FC<TicketsHistoryModuleProps> = ({
           restocks={restocks}
           products={products}
           settings={settings}
+          mermas={mermas}
+          onOpenMermaModal={onOpenMermaModal}
         />
       )}
 
@@ -391,6 +413,30 @@ export const TicketsHistoryModule: React.FC<TicketsHistoryModuleProps> = ({
                 <Send className="w-3.5 h-3.5 text-sky-400" />
                 <span>Respaldo Telegram</span>
               </button>
+
+              {/* Exportar Ventas Excel / CSV */}
+              <div className="flex items-center bg-slate-950 p-0.5 rounded-xl border border-slate-800">
+                <button
+                  type="button"
+                  id="btn-export-sales-excel"
+                  onClick={() => exportMonthlySales(filteredTickets, settings, monthFilter || undefined, 'excel')}
+                  className="px-3 py-1.5 rounded-lg text-emerald-300 hover:text-white hover:bg-emerald-950/60 text-xs font-bold flex items-center gap-1.5 transition cursor-pointer"
+                  title="Exportar facturas visibles a Microsoft Excel (.xls)"
+                >
+                  <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-400" />
+                  <span>Excel</span>
+                </button>
+                <button
+                  type="button"
+                  id="btn-export-sales-csv"
+                  onClick={() => exportMonthlySales(filteredTickets, settings, monthFilter || undefined, 'csv')}
+                  className="px-2.5 py-1.5 rounded-lg text-slate-300 hover:text-white hover:bg-slate-800 text-xs font-bold flex items-center gap-1 transition cursor-pointer"
+                  title="Exportar facturas visibles a CSV (.csv con UTF-8 BOM)"
+                >
+                  <Download className="w-3.5 h-3.5 text-slate-400" />
+                  <span>CSV</span>
+                </button>
+              </div>
             </div>
 
             <div className="px-3.5 py-2 rounded-xl bg-slate-950 border border-slate-800 text-right">
@@ -451,8 +497,27 @@ export const TicketsHistoryModule: React.FC<TicketsHistoryModuleProps> = ({
             />
           </div>
 
-          {/* Filter Pills */}
-          <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar pb-0.5">
+          {/* Month Selector & Filter Pills */}
+          <div className="flex items-center gap-2 overflow-x-auto no-scrollbar pb-0.5">
+            {availableTicketMonths.length > 0 && (
+              <div className="flex items-center gap-1.5 shrink-0 bg-slate-950 border border-slate-800 rounded-xl px-2.5 py-1">
+                <Calendar className="w-3.5 h-3.5 text-rose-400" />
+                <select
+                  value={monthFilter}
+                  onChange={(e) => setMonthFilter(e.target.value)}
+                  className="bg-transparent text-slate-200 text-xs focus:outline-none font-semibold cursor-pointer"
+                >
+                  <option value="" className="bg-slate-900 text-slate-200">Todos los meses ({tickets.length})</option>
+                  {availableTicketMonths.map((m) => (
+                    <option key={m.key} value={m.key} className="bg-slate-900 text-slate-200">
+                      {m.label} ({m.count})
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+
+            <div className="flex items-center gap-1.5 shrink-0">
             {[
               { id: 'all', label: `Todos (${tickets.length})` },
               { id: 'paid', label: 'Pagadas' },
@@ -472,6 +537,7 @@ export const TicketsHistoryModule: React.FC<TicketsHistoryModuleProps> = ({
                 {f.label}
               </button>
             ))}
+            </div>
           </div>
         </div>
       </div>

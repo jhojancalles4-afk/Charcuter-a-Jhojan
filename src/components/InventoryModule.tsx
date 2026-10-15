@@ -18,14 +18,18 @@ import {
   Percent,
   Coins,
   Send,
+  Scissors,
+  FileSpreadsheet,
+  Download,
 } from 'lucide-react';
-import { AppSettings, Product, ProductCategory, UnitType } from '../types';
+import { AppSettings, MermaRecord, Product, ProductCategory, UnitType } from '../types';
 import {
   formatUSD,
   formatVES,
   formatQuantity,
   calculateInventorySummary,
   generateTelegramInventoryReport,
+  exportInventoryToCSV,
 } from '../services/storage';
 import { CameraScannerModal } from './CameraScannerModal';
 import { InventoryReportModal } from './InventoryReportModal';
@@ -33,14 +37,18 @@ import { InventoryReportModal } from './InventoryReportModal';
 interface InventoryModuleProps {
   products: Product[];
   settings: AppSettings;
+  mermas?: MermaRecord[];
   onUpdateProducts: (products: Product[]) => void;
+  onOpenMermaModal?: (product?: Product) => void;
   initialSearchQuery?: string;
 }
 
 export const InventoryModule: React.FC<InventoryModuleProps> = ({
   products,
   settings,
+  mermas = [],
   onUpdateProducts,
+  onOpenMermaModal,
   initialSearchQuery,
 }) => {
   const [searchQuery, setSearchQuery] = useState(initialSearchQuery || '');
@@ -330,6 +338,32 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({
           >
             <Send className="w-4 h-4 text-sky-400" />
             <span>Respaldo Telegram</span>
+          </button>
+
+          {/* Botón de Ajuste de Merma Física */}
+          {onOpenMermaModal && (
+            <button
+              type="button"
+              id="btn-open-merma-adjustment"
+              onClick={() => onOpenMermaModal()}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-amber-950/60 hover:bg-amber-900/80 border border-amber-800/60 text-amber-300 hover:text-white text-xs font-bold transition shadow-sm cursor-pointer active:scale-95"
+              title="Registrar merma física de manipulación, secado o recortes de barra"
+            >
+              <Scissors className="w-4 h-4 text-amber-400" />
+              <span>Ajuste de Merma Física</span>
+            </button>
+          )}
+
+          {/* Exportar Catálogo a Excel / CSV */}
+          <button
+            type="button"
+            id="btn-export-inventory-csv"
+            onClick={() => exportInventoryToCSV(products, settings)}
+            className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white text-xs font-semibold transition border border-slate-700 cursor-pointer shadow-sm active:scale-95"
+            title="Exportar catálogo completo de existencias y costos en formato Excel / CSV"
+          >
+            <Download className="w-4 h-4 text-emerald-400" />
+            <span>Exportar Excel / CSV</span>
           </button>
 
           <button
@@ -643,6 +677,16 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({
                     {/* Actions */}
                     <td className="py-2.5 px-3 text-center">
                       <div className="flex items-center justify-center gap-1">
+                        {onOpenMermaModal && (
+                          <button
+                            type="button"
+                            onClick={() => onOpenMermaModal(p)}
+                            className="p-1.5 rounded-lg bg-amber-500/10 hover:bg-amber-500/25 text-amber-400 hover:text-amber-300 transition cursor-pointer border border-amber-500/30"
+                            title={`Registrar ajuste de merma física / secado para ${p.name}`}
+                          >
+                            <Scissors className="w-3.5 h-3.5" />
+                          </button>
+                        )}
                         <button
                           type="button"
                           onClick={() => openEditModal(p)}

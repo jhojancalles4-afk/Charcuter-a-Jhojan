@@ -23,6 +23,7 @@ import {
   Printer,
   Download,
   AlertTriangle,
+  FileSpreadsheet,
 } from 'lucide-react';
 import { AppSettings, DebtorCustomer, PaymentAbono, Product, SaleTicket } from '../types';
 import {
@@ -37,6 +38,8 @@ import {
   sanitizePhoneForWhatsApp,
   deleteDebtorAccount,
   voidOrDeleteTicket,
+  exportDebtors,
+  exportDebtorsToCSV,
 } from '../services/storage';
 import { ThermalReceiptModal } from './ThermalReceiptModal';
 
@@ -359,6 +362,30 @@ export const FiadosModule: React.FC<FiadosModuleProps> = ({
               <Send className="w-3.5 h-3.5 text-sky-400" />
               <span>Respaldo Telegram</span>
             </button>
+
+            {/* Exportar Deudores a Excel / CSV */}
+            <div className="flex items-center bg-slate-950 p-0.5 rounded-xl border border-slate-800">
+              <button
+                type="button"
+                id="btn-export-debtors-excel"
+                onClick={() => exportDebtors(debtorsList, settings, 'excel')}
+                className="px-3 py-1.5 rounded-lg text-emerald-300 hover:text-white hover:bg-emerald-950/60 text-xs font-bold flex items-center gap-1.5 transition cursor-pointer"
+                title="Descargar libro de deudores en formato Microsoft Excel (.xls)"
+              >
+                <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-400" />
+                <span>Excel</span>
+              </button>
+              <button
+                type="button"
+                id="btn-export-debtors-csv"
+                onClick={() => exportDebtors(debtorsList, settings, 'csv')}
+                className="px-2.5 py-1.5 rounded-lg text-slate-300 hover:text-white hover:bg-slate-800 text-xs font-bold flex items-center gap-1 transition cursor-pointer"
+                title="Descargar libro de deudores en CSV (.csv con UTF-8 BOM)"
+              >
+                <Download className="w-3.5 h-3.5 text-slate-400" />
+                <span>CSV</span>
+              </button>
+            </div>
 
             {/* Search bar */}
             <div className="relative w-full sm:w-64">

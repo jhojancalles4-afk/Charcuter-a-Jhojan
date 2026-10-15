@@ -41,6 +41,7 @@ import {
   buildSystemPandLReport,
   generateWhatsAppPandLReport,
   exportPandLToCSV,
+  exportMermas,
   ZReportPeriodFilter,
 } from '../services/storage';
 
@@ -422,6 +423,18 @@ export const SystemPandLView: React.FC<SystemPandLViewProps> = ({
               </span>
             </div>
 
+            {mermas.length > 0 && (
+              <button
+                type="button"
+                onClick={() => exportMermas(mermas, settings, 'excel')}
+                className="px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-amber-300 text-xs font-bold transition flex items-center gap-1.5 border border-slate-700 cursor-pointer shadow-sm"
+                title="Descargar registro de mermas en Excel (.xls)"
+              >
+                <FileSpreadsheet className="w-3.5 h-3.5 text-amber-400" />
+                <span>Exportar Mermas</span>
+              </button>
+            )}
+
             {onOpenMermaModal && (
               <button
                 type="button"
@@ -434,6 +447,23 @@ export const SystemPandLView: React.FC<SystemPandLViewProps> = ({
             )}
           </div>
         </div>
+
+        {/* Breakdown by warehouse / multi-almacén */}
+        {report.mermasByLocation && report.mermasByLocation.length > 0 && (
+          <div className="pt-2 pb-1 border-t border-slate-800/80 flex flex-wrap items-center gap-2">
+            <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Multi-Almacén:</span>
+            {report.mermasByLocation.map((loc) => (
+              <span
+                key={loc.location}
+                className="px-2.5 py-1 rounded-xl bg-slate-950 border border-slate-800 text-[11px] text-slate-300 flex items-center gap-1.5"
+              >
+                <span className="font-semibold text-white">{loc.location}:</span>
+                <span className="font-mono text-amber-400 font-bold">-{formatUSD(loc.totalUSD)}</span>
+                <span className="text-slate-500 font-mono">({loc.weightKG > 0 ? `${loc.weightKG.toFixed(2)} KG` : `${loc.count} reg.`})</span>
+              </span>
+            ))}
+          </div>
+        )}
 
         {/* Breakdown by reason chips */}
         {report.mermasBreakdown && report.mermasBreakdown.length > 0 ? (

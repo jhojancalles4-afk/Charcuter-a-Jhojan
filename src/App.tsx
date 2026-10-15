@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { AppSettings, ExpenseRecord, FidelisCustomerProfile, Product, RestockRecord, SaleTicket } from './types';
+import { AppSettings, ExpenseRecord, FidelisCustomerProfile, MermaRecord, Product, RestockRecord, SaleTicket } from './types';
 import {
   loadProducts,
   saveProducts,
@@ -11,6 +11,8 @@ import {
   saveExpenses,
   loadRestocks,
   saveRestocks,
+  loadMermas,
+  saveMermas,
   addAbonoToRestock,
   getDebtorsSummary,
 } from './services/storage';
@@ -32,6 +34,7 @@ import { InventoryModule } from './components/InventoryModule';
 import { SettingsModule } from './components/SettingsModule';
 import { FidelisDirectoryModal } from './components/FidelisDirectoryModal';
 import { GoogleBackupModal } from './components/GoogleBackupModal';
+import { MermaAdjustmentModal } from './components/MermaAdjustmentModal';
 import { CheckCircle, AlertCircle } from 'lucide-react';
 import { voidOrDeleteTicket } from './services/storage';
 
@@ -50,11 +53,14 @@ export default function App() {
   const [expenses, setExpenses] = useState<ExpenseRecord[]>(() => loadExpenses());
   const [restocks, setRestocks] = useState<RestockRecord[]>(() => loadRestocks());
   const [settings, setSettings] = useState<AppSettings>(() => loadSettings());
+  const [mermas, setMermas] = useState<MermaRecord[]>(() => loadMermas());
   const [fidelisProfiles, setFidelisProfiles] = useState<Record<string, FidelisCustomerProfile>>(() =>
     loadFidelisProfiles()
   );
   const [isGoogleBackupModalOpen, setIsGoogleBackupModalOpen] = useState(false);
   const [isGlobalFidelisOpen, setIsGlobalFidelisOpen] = useState(false);
+  const [isMermaModalOpen, setIsMermaModalOpen] = useState(false);
+  const [mermaPreselectedProduct, setMermaPreselectedProduct] = useState<Product | null>(null);
   const [inventorySearchQuery, setInventorySearchQuery] = useState<string>('');
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
@@ -66,6 +72,7 @@ export default function App() {
       if (e.detail?.type === 'expenses') setExpenses(loadExpenses());
       if (e.detail?.type === 'restocks') setRestocks(loadRestocks());
       if (e.detail?.type === 'settings') setSettings(loadSettings());
+      if (e.detail?.type === 'mermas') setMermas(loadMermas());
       if (e.detail?.type === 'fidelis') setFidelisProfiles(loadFidelisProfiles());
       if (e.detail?.type === 'all') {
         setProducts(loadProducts());
@@ -73,6 +80,7 @@ export default function App() {
         setExpenses(loadExpenses());
         setRestocks(loadRestocks());
         setSettings(loadSettings());
+        setMermas(loadMermas());
         setFidelisProfiles(loadFidelisProfiles());
       }
     };
@@ -84,6 +92,7 @@ export default function App() {
         setExpenses(loadExpenses());
         setRestocks(loadRestocks());
         setSettings(loadSettings());
+        setMermas(loadMermas());
         setFidelisProfiles(loadFidelisProfiles());
       }
     };
@@ -209,6 +218,18 @@ export default function App() {
   const handleUpdateRestocks = useCallback((newRestocks: RestockRecord[]) => {
     setRestocks(newRestocks);
     saveRestocks(newRestocks);
+  }, []);
+
+  // Update mermas
+  const handleUpdateMermas = useCallback((newMermas: MermaRecord[]) => {
+    setMermas(newMermas);
+    saveMermas(newMermas);
+  }, []);
+
+  // Open Merma Adjustment Modal (with optional preselected product)
+  const handleOpenMermaModal = useCallback((product?: Product) => {
+    setMermaPreselectedProduct(product || null);
+    setIsMermaModalOpen(true);
   }, []);
 
   // Make an abono to a supplier restock account
@@ -404,12 +425,14 @@ export default function App() {
             restocks={restocks}
             products={products}
             settings={settings}
+            mermas={mermas}
             onDeleteTicket={handleDeleteTicket}
             onAddExpense={handleAddExpense}
             onDeleteExpense={handleDeleteExpense}
             onAbonoToRestock={handleAbonoToRestock}
             onTicketsImported={handleTicketsImported}
             onNavigateToRestocks={() => setActiveTab('restocks')}
+            onOpenMermaModal={handleOpenMermaModal}
           />
         )}
 
@@ -443,7 +466,9 @@ export default function App() {
           <InventoryModule
             products={products}
             settings={settings}
+            mermas={mermas}
             onUpdateProducts={handleUpdateProducts}
+            onOpenMermaModal={handleOpenMermaModal}
             initialSearchQuery={inventorySearchQuery}
           />
         )}
@@ -457,15 +482,32 @@ export default function App() {
         )}
       </main>
 
-      {/* Google Daily Backup & Cloud Restoration Modal */}
+      {/* Google Daily Backup, Cloud Restoration & Excel/CSV Modal */}
       <GoogleBackupModal
         isOpen={isGoogleBackupModalOpen}
         onClose={() => setIsGoogleBackupModalOpen(false)}
-        onDataRestored={() => showToast('¡Datos sincronizados y recuperados desde Google!')}
+        onDataRestored={() => showToast('¡Datos sincronizados y recuperados!')}
         tickets={tickets}
         products={products}
         settings={settings}
         expenses={expenses}
+        mermas={mermas}
+      />
+
+      {/* Merma Adjustment Modal (Multi-Almacén & Manipulación) */}
+      <MermaAdjustmentModal
+        isOpen={isMermaModalOpen}
+        onClose={() => {
+          setIsMermaModalOpen(false);
+          setMermaPreselectedProduct(null);
+        }}
+        products={products}
+        mermas={mermas}
+        settings={settings}
+        preselectedProduct={mermaPreselectedProduct}
+        onUpdateProducts={handleUpdateProducts}
+        onUpdateMermas={handleUpdateMermas}
+        onSuccessToast={showToast}
       />
 
       {/* Global Fidelis Customer Directory Modal */}
