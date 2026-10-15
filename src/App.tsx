@@ -70,8 +70,22 @@ export default function App() {
       }
     };
 
+    const handleNativeStorage = (e: StorageEvent) => {
+      if (!e.key || e.key.startsWith('jhojan_pos_')) {
+        setProducts(loadProducts());
+        setTickets(loadTickets());
+        setExpenses(loadExpenses());
+        setSettings(loadSettings());
+        setFidelisProfiles(loadFidelisProfiles());
+      }
+    };
+
     window.addEventListener('jhojan_pos_sync', handleStorageSync);
-    return () => window.removeEventListener('jhojan_pos_sync', handleStorageSync);
+    window.addEventListener('storage', handleNativeStorage);
+    return () => {
+      window.removeEventListener('jhojan_pos_sync', handleStorageSync);
+      window.removeEventListener('storage', handleNativeStorage);
+    };
   }, []);
 
   // Save changes to localStorage whenever state changes

@@ -18,7 +18,6 @@ import {
 } from 'lucide-react';
 import { AppSettings } from '../types';
 import { formatVES, formatUSD } from '../services/storage';
-import { PWAInstallButton } from './PWAInstallButton';
 import { OfflineIndicator } from './OfflineIndicator';
 
 interface HeaderProps {
@@ -266,9 +265,6 @@ export const Header: React.FC<HeaderProps> = ({
 
             {/* Local Storage & Connectivity Status */}
             <OfflineIndicator />
-
-            {/* PWA Install Button */}
-            <PWAInstallButton />
           </div>
         </div>
 

@@ -77,18 +77,31 @@ export const ThermalReceiptModal: React.FC<ThermalReceiptModalProps> = ({
     setTimeout(() => setIsPrinting(false), 1200);
   };
 
-  const handleBluetoothPrint = async () => {
-    setBluetoothStatus('Buscando impresora Bluetooth...');
-    setIsPrinting(true);
+  const [isSharingImage, setIsSharingImage] = useState(false);
+  const handleShareImageNative = async () => {
+    if (!dataUrl) return;
+    setIsSharingImage(true);
     try {
-      const res = await printReceiptBluetoothDirect(ticket, settings);
-      setBluetoothStatus(res.message);
-    } catch {
-      setBluetoothStatus('Conexión finalizada.');
+      if (typeof navigator !== 'undefined' && navigator.share && navigator.canShare) {
+        const res = await fetch(dataUrl);
+        const blob = await res.blob();
+        const file = new File([blob], `factura-${ticket.ticketNumber}.png`, { type: 'image/png' });
+        if (navigator.canShare({ files: [file] })) {
+          await navigator.share({
+            files: [file],
+            title: `Factura #${ticket.ticketNumber} - ${settings.businessName}`,
+          });
+          return;
+        }
+      }
+    } catch (e: any) {
+      if (e?.name !== 'AbortError') {
+        console.warn('Error compartiendo imagen:', e);
+      }
     } finally {
-      setIsPrinting(false);
-      setTimeout(() => setBluetoothStatus(null), 4000);
+      setIsSharingImage(false);
     }
+    downloadReceiptPNG(ticket, settings);
   };
 
   return (

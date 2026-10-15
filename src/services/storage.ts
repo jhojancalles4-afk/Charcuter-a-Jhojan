@@ -514,8 +514,16 @@ export function getDebtorsSummary(tickets: SaleTicket[], bcvRate: number): Debto
 
     if (!isFiadoOrPending || ticket.pendingUSD <= 0.001) continue;
 
-    // Use normalized phone or cédula as key
-    const key = (ticket.customerPhone || ticket.customerCedula || ticket.customerName).trim().toLowerCase();
+    // Use normalized phone or valid cédula as key, otherwise fallback to customer name
+    const isPlaceholderCedula =
+      !ticket.customerCedula ||
+      ticket.customerCedula.trim().toUpperCase() === 'V-00000000' ||
+      ticket.customerCedula.trim() === '0';
+    const key = (
+      ticket.customerPhone?.trim() ||
+      (!isPlaceholderCedula ? ticket.customerCedula.trim() : '') ||
+      ticket.customerName.trim()
+    ).toLowerCase();
     if (!key) continue;
 
     const existing = map.get(key);
@@ -704,7 +712,10 @@ export function amortizeCustomerPayment(
   const customerTickets = allTickets
     .filter((t) => {
       const matchPhone = t.customerPhone && t.customerPhone.trim() === customerPhoneOrCedula.trim();
-      const matchCedula = t.customerCedula && t.customerCedula.trim() === customerPhoneOrCedula.trim();
+      const matchCedula =
+        customerPhoneOrCedula.trim().toUpperCase() !== 'V-00000000' &&
+        t.customerCedula &&
+        t.customerCedula.trim() === customerPhoneOrCedula.trim();
       const matchName = t.customerName && t.customerName.trim().toLowerCase() === customerPhoneOrCedula.trim().toLowerCase();
       const isUnpaid = (t.status === 'pending' || t.status === 'partially_paid') && t.pendingUSD > 0.001;
       return (matchPhone || matchCedula || matchName) && isUnpaid;
@@ -920,7 +931,15 @@ export function importDatabaseBackup(jsonString: string): { success: boolean; me
       return { success: false, message: 'El archivo no tiene el formato válido de respaldo de Charcutería Jhojan POS.' };
     }
 
-    saveSettings(data.settings);
+    const maxTicketNum = Array.isArray(data.tickets)
+      ? data.tickets.reduce((max: number, t: any) => Math.max(max, Number(t.ticketNumber) || 0), 0)
+      : 0;
+    const adjustedSettings: AppSettings = {
+      ...data.settings,
+      ticketCounter: Math.max(Number(data.settings.ticketCounter) || 1, maxTicketNum + 1),
+    };
+
+    saveSettings(adjustedSettings);
     saveProducts(data.products);
     saveTickets(data.tickets);
     if (Array.isArray(data.expenses)) {
@@ -2571,5 +2590,81 @@ export function generateEmailFullMasterBackup(params: {
   const webGmailUrl = `https://mail.google.com/mail/?view=cm&fs=1&to=${target}&su=${encodedSubject}&body=${encodedBody}`;
 
   return { mailtoUrl, webGmailUrl, subject, body };
+}
+
+/**
+ * Envía exclusivamente el ARCHIVO de respaldo (.json) a la aplicación de Telegram
+ * del número de teléfono especificado, sin enviar mensajes de texto largos y sin
+ * abrir páginas web intermedias.
+ */
+export async function sendTelegramBackupFile(targetPhone?: string): Promise<{
+  success: boolean;
+  method: 'share' | 'download_and_app';
+  fileName: string;
+  message: string;
+}> {
+  const jsonStr = exportDatabaseBackupString();
+  const dateStr = new Date().toISOString().slice(0, 10);
+  const fileName = `respaldo-charcuteria-jhojan-${dateStr}.json`;
+  const cleanPhone = (targetPhone || '').replace(/[^0-9]/g, '');
+  const internationalPhone = cleanPhone
+    ? cleanPhone.startsWith('58')
+      ? cleanPhone
+      : cleanPhone.startsWith('0')
+      ? `58${cleanPhone.slice(1)}`
+      : `58${cleanPhone}`
+    : '';
+
+  // 1. En móviles (Android / iOS), usar Web Share con archivo real
+  // Esto abre directamente la app de Telegram del teléfono con el archivo adjunto
+  if (typeof navigator !== 'undefined' && navigator.share && navigator.canShare) {
+    try {
+      const file = new File([jsonStr], fileName, { type: 'application/json' });
+      if (navigator.canShare({ files: [file] })) {
+        await navigator.share({
+          files: [file],
+          title: `Respaldo Jhojan POS - ${dateStr}`,
+        });
+        return {
+          success: true,
+          method: 'share',
+          fileName,
+          message: 'Archivo enviado a la aplicación de Telegram.',
+        };
+      }
+    } catch (err: any) {
+      if (err.name === 'AbortError') {
+        return {
+          success: false,
+          method: 'share',
+          fileName,
+          message: 'Envío de archivo cancelado.',
+        };
+      }
+      console.warn('Web Share no disponible para archivos, usando método alternativo:', err);
+    }
+  }
+
+  // 2. Descargar el archivo .JSON en el teléfono
+  exportDatabaseBackup();
+
+  // 3. Abrir la app nativa de Telegram (tg://) hacia el número si está disponible, sin ir a web
+  if (cleanPhone) {
+    try {
+      const tgAppUrl = `tg://msg?to=+${internationalPhone}`;
+      const link = document.createElement('a');
+      link.href = tgAppUrl;
+      link.click();
+    } catch {
+      // Ignorar si el protocolo tg:// no está registrado en el navegador
+    }
+  }
+
+  return {
+    success: true,
+    method: 'download_and_app',
+    fileName,
+    message: `Archivo ${fileName} listo. Selecciona Telegram para guardarlo en tu cuenta.`,
+  };
 }
 

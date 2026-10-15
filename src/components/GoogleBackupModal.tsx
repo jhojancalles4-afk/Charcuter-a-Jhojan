@@ -29,6 +29,7 @@ import {
   loadExpenses,
   getDebtorsSummary,
   exportDatabaseBackupString,
+  sendTelegramBackupFile,
 } from '../services/storage';
 
 interface GoogleBackupModalProps {
@@ -51,7 +52,7 @@ export const GoogleBackupModal: React.FC<GoogleBackupModalProps> = ({
   expenses,
 }) => {
   const [activeTab, setActiveTab] = useState<'drive' | 'telegram'>('drive');
-  const [statusMessage, setStatusMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [statusMessage, setStatusMessage] = useState<{ type: 'success' | 'error' | 'info'; text: string } | null>(null);
 
   // Drive restore input ref
   const driveFileInputRef = useRef<HTMLInputElement>(null);
@@ -62,6 +63,10 @@ export const GoogleBackupModal: React.FC<GoogleBackupModalProps> = ({
   const [telegramInputText, setTelegramInputText] = useState('');
   const [isProcessingTelegram, setIsProcessingTelegram] = useState(false);
   const [copiedTelegramPackage, setCopiedTelegramPackage] = useState(false);
+  const [telegramPhone, setTelegramPhone] = useState(
+    settings?.telegramPhone || settings?.phone || '0414-7281945'
+  );
+  const [isSendingTelegram, setIsSendingTelegram] = useState(false);
 
   if (!isOpen) return null;
 
@@ -141,40 +146,31 @@ export const GoogleBackupModal: React.FC<GoogleBackupModalProps> = ({
     e.target.value = '';
   };
 
-  // Handler to open Telegram Web or App
-  const handleSendTelegram = () => {
-    window.open(telegramPackage.url, '_blank', 'noopener,noreferrer');
-  };
-
-  // Handler to copy the complete unified package with code
-  const handleCopyTelegramMessage = () => {
-    navigator.clipboard.writeText(telegramPackage.fullMessageWithCode);
-    setCopiedTelegramPackage(true);
-    setTimeout(() => setCopiedTelegramPackage(false), 3000);
-  };
-
-  // Share via device native share sheet (e.g. share file to Telegram or Drive directly)
-  const handleShareFileNative = async () => {
-    const jsonStr = exportDatabaseBackupString();
-    const dateStr = new Date().toISOString().slice(0, 10);
-    const fileName = `respaldo-charcuteria-jhojan-${dateStr}.json`;
-
+  // Send pure .json backup file to Telegram app / number
+  const handleSendTelegramFile = async () => {
+    setIsSendingTelegram(true);
+    setStatusMessage(null);
     try {
-      if (navigator.share && navigator.canShare) {
-        const file = new File([jsonStr], fileName, { type: 'application/json' });
-        if (navigator.canShare({ files: [file] })) {
-          await navigator.share({
-            files: [file],
-            title: `Respaldo Jhojan POS - ${dateStr}`,
-            text: 'Respaldo completo de base de datos para Google Drive o Telegram.',
-          });
-          return;
-        }
+      const res = await sendTelegramBackupFile(telegramPhone);
+      if (res.success) {
+        setStatusMessage({
+          type: 'success',
+          text: `¡Listo! ${res.message}`,
+        });
+      } else {
+        setStatusMessage({
+          type: 'info',
+          text: res.message,
+        });
       }
-    } catch (e) {
-      // User cancelled or share failed, fallback to download
+    } catch (err: any) {
+      setStatusMessage({
+        type: 'error',
+        text: 'Error al enviar archivo a Telegram: ' + (err?.message || 'Verifica la aplicación'),
+      });
+    } finally {
+      setIsSendingTelegram(false);
     }
-    exportGoogleDriveBackupFile();
   };
 
   // Handler to restore by pasting text/code received from Telegram
@@ -275,11 +271,15 @@ export const GoogleBackupModal: React.FC<GoogleBackupModalProps> = ({
             className={`p-3.5 rounded-2xl text-xs flex items-start gap-2.5 animate-in fade-in ${
               statusMessage.type === 'success'
                 ? 'bg-emerald-950/80 border border-emerald-800 text-emerald-300'
+                : statusMessage.type === 'info'
+                ? 'bg-sky-950/80 border border-sky-800 text-sky-300'
                 : 'bg-rose-950/80 border border-rose-800 text-rose-300'
             }`}
           >
             {statusMessage.type === 'success' ? (
               <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-400 mt-0.5" />
+            ) : statusMessage.type === 'info' ? (
+              <Sparkles className="w-4 h-4 shrink-0 text-sky-400 mt-0.5" />
             ) : (
               <AlertCircle className="w-4 h-4 shrink-0 text-rose-400 mt-0.5" />
             )}
@@ -403,62 +403,63 @@ export const GoogleBackupModal: React.FC<GoogleBackupModalProps> = ({
             <div className="p-3.5 rounded-2xl bg-sky-950/20 border border-sky-900/40 text-xs text-slate-300 flex items-start gap-2.5">
               <Send className="w-5 h-5 text-sky-400 shrink-0 mt-0.5" />
               <div className="space-y-1">
-                <span className="font-bold text-slate-100 block">Respaldo y Restauración Unificada por Telegram</span>
-                <p className="leading-relaxed">
-                  Envía todo tu cuadre, deudas de fiados e inventario consolidado a Telegram (ej. tus <em>Mensajes Guardados</em> o chat). Para restaurar en otro teléfono, <strong>basta con copiar el mensaje o código desde Telegram y pegarlo abajo</strong>.
+                <span className="font-bold text-slate-100 block">Envío Directo de Archivo de Respaldo a Telegram</span>
+                <p className="leading-relaxed text-slate-300">
+                  Envía exclusivamente el <strong>archivo de respaldo (.json)</strong> directamente a tu cuenta o número en la <strong>aplicación de Telegram</strong>, sin textos largos ni redirecciones a páginas web.
                 </p>
               </div>
             </div>
 
-            {/* Part A: Send Backup to Telegram */}
+            {/* Part A: Send Backup File to Telegram */}
             <div className="p-4 rounded-2xl bg-slate-950 border border-slate-800 space-y-3">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2 text-sky-400 font-bold text-xs">
                   <Send className="w-4 h-4" />
-                  <span>1. Enviar Respaldo a Telegram</span>
+                  <span>1. Enviar Archivo a tu Número de Telegram</span>
                 </div>
-                <span className="text-[10px] px-2 py-0.5 rounded-full bg-sky-950 text-sky-300 border border-sky-800 font-mono font-semibold">
-                  Facturas • Fiados • Caja • Inventario
+                <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-950 text-emerald-300 border border-emerald-800 font-mono font-semibold">
+                  Solo Archivo .JSON
                 </span>
               </div>
 
-              <p className="text-[11px] text-slate-400 leading-relaxed">
-                El respaldo incluye el resumen legible con balances y el código especial para restaurar la base de datos en cualquier otro teléfono o computadora.
-              </p>
+              <div>
+                <label className="block text-[11px] font-semibold text-slate-300 mb-1">
+                  Tu Número de Teléfono de Telegram:
+                </label>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="tel"
+                    value={telegramPhone}
+                    onChange={(e) => setTelegramPhone(e.target.value)}
+                    placeholder="Ej. 0414-7281945 o +584147281945"
+                    className="flex-1 bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-xs font-mono text-slate-100 focus:outline-rose-500"
+                  />
+                </div>
+                <p className="text-[10px] text-slate-400 mt-1">
+                  Se abrirá la aplicación de Telegram en tu teléfono para entregar el archivo directamente sin pasar por páginas web.
+                </p>
+              </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 pt-1">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
                 <button
                   type="button"
-                  onClick={handleSendTelegram}
-                  className="py-2.5 px-3 rounded-xl bg-sky-500 hover:bg-sky-400 active:bg-sky-600 text-white font-bold text-xs flex items-center justify-center gap-2 transition shadow-md shadow-sky-950/50 cursor-pointer"
-                  title="Abrir Telegram con el resumen consolidado"
+                  onClick={handleSendTelegramFile}
+                  disabled={isSendingTelegram}
+                  className="py-2.5 px-3 rounded-xl bg-sky-500 hover:bg-sky-400 active:bg-sky-600 text-white font-bold text-xs flex items-center justify-center gap-2 transition shadow-md shadow-sky-950/50 cursor-pointer disabled:opacity-50"
+                  title="Enviar archivo de respaldo directamente a la aplicación de Telegram"
                 >
-                  <Send className="w-3.5 h-3.5" />
-                  <span>Abrir Telegram</span>
+                  <Send className={`w-3.5 h-3.5 ${isSendingTelegram ? 'animate-spin' : ''}`} />
+                  <span>{isSendingTelegram ? 'Preparando...' : 'Enviar Archivo a Telegram'}</span>
                 </button>
 
                 <button
                   type="button"
-                  onClick={handleCopyTelegramMessage}
+                  onClick={exportGoogleDriveBackupFile}
                   className="py-2.5 px-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-semibold text-xs flex items-center justify-center gap-1.5 transition border border-slate-700 cursor-pointer"
-                  title="Copiar texto completo con código de restauración"
+                  title="Descargar archivo .json en este dispositivo"
                 >
-                  {copiedTelegramPackage ? (
-                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
-                  ) : (
-                    <Copy className="w-3.5 h-3.5" />
-                  )}
-                  <span>{copiedTelegramPackage ? '¡Copiado!' : 'Copiar Texto + Código'}</span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={handleShareFileNative}
-                  className="py-2.5 px-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-semibold text-xs flex items-center justify-center gap-1.5 transition border border-slate-700 cursor-pointer"
-                  title="Compartir archivo directamente a Telegram"
-                >
-                  <Share2 className="w-3.5 h-3.5 text-sky-400" />
-                  <span>Compartir Archivo</span>
+                  <Download className="w-3.5 h-3.5 text-sky-400" />
+                  <span>Descargar Archivo .JSON</span>
                 </button>
               </div>
             </div>

@@ -93,6 +93,7 @@ export interface AppSettings {
   ticketCounter: number;
   autoSyncCloud: boolean;
   lastCloudSync?: string;
+  telegramPhone?: string;
 }
 
 export interface DebtorCustomer {

@@ -41,6 +41,7 @@ export const INITIAL_SETTINGS: AppSettings = {
   ticketCounter: 1045,
   autoSyncCloud: true,
   lastCloudSync: new Date().toISOString(),
+  telegramPhone: '0414-7281945',
 };
 
 export const INITIAL_PRODUCTS: Product[] = [
