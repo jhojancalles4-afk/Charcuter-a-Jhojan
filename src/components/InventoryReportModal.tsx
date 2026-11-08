@@ -21,7 +21,6 @@ import {
   formatQuantity,
   calculateInventorySummary,
   generateWhatsAppInventoryReport,
-  generateTelegramInventoryReport,
 } from '../services/storage';
 
 interface InventoryReportModalProps {
@@ -95,11 +94,6 @@ export const InventoryReportModal: React.FC<InventoryReportModalProps> = ({
 
   const handleShareWhatsApp = () => {
     const { url } = generateWhatsAppInventoryReport(products, settings);
-    window.open(url, '_blank');
-  };
-
-  const handleShareTelegram = () => {
-    const { url } = generateTelegramInventoryReport(products, settings);
     window.open(url, '_blank');
   };
 
@@ -465,16 +459,6 @@ export const InventoryReportModal: React.FC<InventoryReportModalProps> = ({
             >
               {copiedLink ? <Check className="w-4 h-4 text-emerald-400" /> : <Share2 className="w-4 h-4" />}
               <span>{copiedLink ? '¡Copiado!' : 'Copiar Resumen'}</span>
-            </button>
-
-            <button
-              type="button"
-              id="btn-share-inventory-telegram"
-              onClick={handleShareTelegram}
-              className="flex-1 sm:flex-none px-3.5 py-2 rounded-xl bg-sky-500 hover:bg-sky-400 text-white text-xs font-bold flex items-center justify-center gap-1.5 transition shadow-lg shadow-sky-950/40 cursor-pointer active:scale-95"
-            >
-              <Send className="w-4 h-4" />
-              <span>Enviar por Telegram</span>
             </button>
 
             <button

@@ -476,3 +476,64 @@ export interface GoogleAccountInfo {
   lastBackupDate?: string;
   autoDailyBackupEnabled: boolean;
 }
+
+// --- AI Predictive Restocking & Purchase Patterns ---
+export type RestockUrgencyLevel = 'critical' | 'warning' | 'optimal' | 'low_turnover';
+export type RestockSalesTrend = 'accelerating' | 'stable' | 'declining';
+
+export interface AIRestockPrediction {
+  productId: string;
+  productName: string;
+  category: ProductCategory;
+  unit: UnitType;
+  emoji: string;
+  currentStock: number;
+  minStockAlert: number;
+  dailySalesRate: number; // Daily run-rate in unit
+  weeklySalesRate: number;
+  daysOfStockLeft: number; // Runway days
+  predictedDepletionDate: string; // ISO or date string
+  urgencyLevel: RestockUrgencyLevel;
+  suggestedRestockQty: number;
+  suggestedRestockCostUSD: number;
+  estimatedStockoutRiskPercent: number;
+  suggestedSupplier?: {
+    name: string;
+    phone?: string;
+    lastUnitCostUSD: number;
+    invoiceCount: number;
+  };
+  salesTrend: RestockSalesTrend;
+  reasoning: string;
+}
+
+export interface AIPatternsReport {
+  analyzedTicketsCount: number;
+  analyzedDaysWindow: number;
+  totalSalesVolumeUSD: number;
+  topMovingProducts: {
+    productId: string;
+    productName: string;
+    emoji: string;
+    unit: UnitType;
+    quantitySold: number;
+    dailyVelocity: number;
+  }[];
+  peakDaysOfWeek: {
+    dayName: string;
+    ticketCount: number;
+    volumeUSD: number;
+    percentage: number;
+  }[];
+  basketAffinities: {
+    productA: string;
+    productB: string;
+    coOccurrenceCount: number;
+    percentage: number;
+  }[];
+  criticalStockoutsCount: number;
+  warningStockoutsCount: number;
+  totalRecommendedPurchaseUSD: number;
+  aiExecutiveSummary: string;
+}
+

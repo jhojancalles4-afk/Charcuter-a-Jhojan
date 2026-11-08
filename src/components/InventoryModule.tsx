@@ -28,7 +28,6 @@ import {
   formatVES,
   formatQuantity,
   calculateInventorySummary,
-  generateTelegramInventoryReport,
   exportInventoryToCSV,
 } from '../services/storage';
 import { CameraScannerModal } from './CameraScannerModal';
@@ -322,24 +321,6 @@ export const InventoryModule: React.FC<InventoryModuleProps> = ({
         </div>
 
         <div className="flex items-center gap-2 flex-wrap">
-          <button
-            type="button"
-            id="btn-telegram-inventory-backup"
-            onClick={() => {
-              const { url } = generateTelegramInventoryReport(products, settings);
-              const a = document.createElement('a');
-              a.href = url;
-              a.target = '_blank';
-              a.rel = 'noopener noreferrer';
-              a.click();
-            }}
-            className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-sky-950/60 hover:bg-sky-900/80 border border-sky-800/60 text-sky-300 hover:text-white text-xs font-semibold transition shadow-sm cursor-pointer active:scale-95"
-            title="Enviar respaldo de inventario y stock por Telegram"
-          >
-            <Send className="w-4 h-4 text-sky-400" />
-            <span>Respaldo Telegram</span>
-          </button>
-
           {/* Botón de Ajuste de Merma Física */}
           {onOpenMermaModal && (
             <button

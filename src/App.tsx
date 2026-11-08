@@ -32,6 +32,7 @@ import { FiadosModule } from './components/FiadosModule';
 import { RestockModule } from './components/RestockModule';
 import { InventoryModule } from './components/InventoryModule';
 import { SettingsModule } from './components/SettingsModule';
+import { AIControlModule } from './components/AIControlModule';
 import { FidelisDirectoryModal } from './components/FidelisDirectoryModal';
 import { GoogleBackupModal } from './components/GoogleBackupModal';
 import { MermaAdjustmentModal } from './components/MermaAdjustmentModal';
@@ -39,10 +40,21 @@ import { CheckCircle, AlertCircle } from 'lucide-react';
 import { voidOrDeleteTicket } from './services/storage';
 
 export default function App() {
-  const [activeTab, setActiveTab] = useState<'pos' | 'tickets' | 'fiados' | 'restocks' | 'inventory' | 'settings'>(() => {
+  const [activeTab, setActiveTab] = useState<
+    'pos' | 'tickets' | 'fiados' | 'restocks' | 'inventory' | 'settings' | 'ai'
+  >(() => {
     if (typeof window !== 'undefined') {
-      const tabParam = new URLSearchParams(window.location.search).get('tab');
-      if (tabParam === 'pos' || tabParam === 'tickets' || tabParam === 'fiados' || tabParam === 'restocks' || tabParam === 'inventory' || tabParam === 'settings') {
+      const searchParams = new URLSearchParams(window.location.search);
+      const tabParam = searchParams.get('tab');
+      if (
+        tabParam === 'pos' ||
+        tabParam === 'tickets' ||
+        tabParam === 'fiados' ||
+        tabParam === 'restocks' ||
+        tabParam === 'inventory' ||
+        tabParam === 'settings' ||
+        tabParam === 'ai'
+      ) {
         return tabParam;
       }
     }
@@ -401,7 +413,6 @@ export default function App() {
         totalDebtUSD={totalDebtUSD}
         fidelisRewardsReadyCount={fidelisRewardsReadyCount}
         onOpenFidelis={() => setIsGlobalFidelisOpen(true)}
-        onOpenGoogleBackup={() => setIsGoogleBackupModalOpen(true)}
       />
 
       {/* Main Tab Views */}
@@ -451,6 +462,7 @@ export default function App() {
             products={products}
             restocks={restocks}
             expenses={expenses}
+            tickets={tickets}
             settings={settings}
             onUpdateProducts={handleUpdateProducts}
             onUpdateRestocks={handleUpdateRestocks}
@@ -470,6 +482,27 @@ export default function App() {
             onUpdateProducts={handleUpdateProducts}
             onOpenMermaModal={handleOpenMermaModal}
             initialSearchQuery={inventorySearchQuery}
+          />
+        )}
+
+        {activeTab === 'ai' && (
+          <AIControlModule
+            products={products}
+            tickets={tickets}
+            debtors={debtorsSummary}
+            restocks={restocks}
+            expenses={expenses}
+            mermas={mermas}
+            settings={settings}
+            onUpdateBcvRate={handleUpdateBcvRate}
+            onUpdatePreferentialRate={handleUpdatePreferentialRate}
+            onUpdateProducts={handleUpdateProducts}
+            onShowToast={showToast}
+            onNavigateToTab={(tab) => {
+              if (['pos', 'tickets', 'fiados', 'restocks', 'inventory', 'settings', 'ai'].includes(tab)) {
+                setActiveTab(tab as any);
+              }
+            }}
           />
         )}
 

@@ -18,10 +18,9 @@ import {
   ArrowDownRight,
   ArrowUpRight,
   ShieldCheck,
-  Send,
 } from 'lucide-react';
 import { AppSettings, ExpenseRecord, SaleTicket } from '../types';
-import { formatUSD, formatVES, generateTelegramShareUrl } from '../services/storage';
+import { formatUSD, formatVES } from '../services/storage';
 
 interface ShortCashReportViewProps {
   tickets: SaleTicket[];
@@ -296,11 +295,6 @@ ${report.pendingFiadoUSD > 0 ? `\n⚠️ *Por Cobrar en Fiados:* ${formatUSD(rep
     window.open(url, '_blank');
   };
 
-  const handleTelegram = () => {
-    const url = generateTelegramShareUrl(formattedText);
-    window.open(url, '_blank');
-  };
-
   const handlePrint = () => {
     window.print();
   };
@@ -333,17 +327,6 @@ ${report.pendingFiadoUSD > 0 ? `\n⚠️ *Por Cobrar en Fiados:* ${formatUSD(rep
           >
             {copied ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
             <span>{copied ? '¡Copiado!' : 'Copiar'}</span>
-          </button>
-
-          <button
-            type="button"
-            id="btn-telegram-short-cash"
-            onClick={handleTelegram}
-            className="px-3.5 py-2 rounded-xl bg-sky-500 hover:bg-sky-400 text-white text-xs font-bold flex items-center gap-1.5 transition shadow-md shadow-sky-950/50 cursor-pointer active:scale-95"
-            title="Enviar reporte por Telegram"
-          >
-            <Send className="w-4 h-4" />
-            <span>Telegram</span>
           </button>
 
           <button

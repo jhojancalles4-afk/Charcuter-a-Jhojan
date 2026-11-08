@@ -17,7 +17,7 @@ import {
   printReceiptBluetoothDirect,
   printReceiptThermal,
 } from '../services/receiptRenderer';
-import { generateWhatsAppThankYou, generateTelegramThankYou } from '../services/storage';
+import { generateWhatsAppThankYou } from '../services/storage';
 
 interface ThermalReceiptModalProps {
   ticket: SaleTicket | null;
@@ -63,7 +63,6 @@ export const ThermalReceiptModal: React.FC<ThermalReceiptModalProps> = ({
   if (!ticket) return null;
 
   const { url: whatsAppUrl } = generateWhatsAppThankYou(ticket, settings);
-  const { url: telegramUrl } = generateTelegramThankYou(ticket, settings);
 
   const handleDownloadPNG = () => {
     downloadReceiptPNG(ticket, settings);
@@ -246,35 +245,18 @@ export const ThermalReceiptModal: React.FC<ThermalReceiptModalProps> = ({
             </div>
           </div>
 
-          {/* Share Actions: Telegram & WhatsApp */}
+          {/* WhatsApp Business Thank-You Action */}
           <div className="flex flex-col gap-2">
             <a
-              id="btn-share-receipt-telegram"
-              href={telegramUrl}
+              id="btn-share-receipt-whatsapp"
+              href={whatsAppUrl}
               target="_blank"
               rel="noopener noreferrer"
-              className="w-full py-2.5 rounded-xl bg-sky-500 hover:bg-sky-400 active:bg-sky-600 text-white font-bold text-xs transition flex items-center justify-center gap-2 shadow-md shadow-sky-950/50 cursor-pointer"
+              className="w-full py-3 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 active:from-emerald-700 active:to-teal-700 text-white font-bold text-xs sm:text-sm transition flex items-center justify-center gap-2 shadow-lg shadow-emerald-950/60 cursor-pointer"
             >
-              <Send className="w-4 h-4" />
-              <span>Enviar Factura por Telegram</span>
+              <Share2 className="w-4 h-4" />
+              <span>Enviar Agradecimiento por WhatsApp Business {ticket.customerPhone ? `(${ticket.customerPhone})` : ''}</span>
             </a>
-
-            {whatsAppUrl ? (
-              <a
-                id="btn-share-receipt-whatsapp"
-                href={whatsAppUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="w-full py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs transition flex items-center justify-center gap-2 shadow-md shadow-emerald-950/50 cursor-pointer"
-              >
-                <Share2 className="w-4 h-4" />
-                <span>Enviar por WhatsApp ({ticket.customerPhone || 'Cliente'})</span>
-              </a>
-            ) : (
-              <div className="text-center text-[10px] text-slate-500 py-0.5">
-                (Cliente sin número WhatsApp para envío directo por wa.me)
-              </div>
-            )}
           </div>
 
           {/* Close button */}

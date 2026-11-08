@@ -569,6 +569,166 @@ export function addAbonoToRestock(
   };
 }
 
+/**
+ * Elimina un registro de reposición/compra de mercancía en caso de error.
+ * Opcionalmente revierte el stock del producto que fue sumado erróneamente,
+ * y cancela/elimina los egresos generados en caja por esa compra o sus abonos.
+ */
+export function deleteRestockRecord(
+  restockId: string,
+  revertStock: boolean,
+  products: Product[],
+  restocks: RestockRecord[],
+  expenses: ExpenseRecord[]
+): {
+  updatedProducts: Product[];
+  updatedRestocks: RestockRecord[];
+  updatedExpenses: ExpenseRecord[];
+  deletedRestock: RestockRecord;
+  revertedStockQty: number;
+} {
+  const target = restocks.find((r) => r.id === restockId);
+  if (!target) {
+    throw new Error('Registro de reposición no encontrado');
+  }
+
+  let updatedProducts = [...products];
+  let revertedStockQty = 0;
+
+  if (revertStock && target.quantityAdded > 0) {
+    revertedStockQty = target.quantityAdded;
+    updatedProducts = products.map((p) => {
+      if (p.id === target.productId) {
+        const revertedStock = Math.max(0, Math.round((p.stock - target.quantityAdded) * 1000) / 1000);
+        return {
+          ...p,
+          stock: revertedStock,
+        };
+      }
+      return p;
+    });
+  }
+
+  // Gather expense IDs associated with this restock
+  const targetExpenseIds = new Set<string>(target.expenseIds || []);
+
+  // Also remove expenses matching this restock or its invoice
+  const updatedExpenses = expenses.filter((e) => {
+    if (targetExpenseIds.has(e.id)) return false;
+    if (e.reference && target.supplierInvoiceNumber && e.reference.trim() === target.supplierInvoiceNumber.trim()) {
+      return false;
+    }
+    return true;
+  });
+
+  const updatedRestocks = restocks.filter((r) => r.id !== restockId);
+
+  saveProducts(updatedProducts);
+  saveRestocks(updatedRestocks);
+  saveExpenses(updatedExpenses);
+
+  return {
+    updatedProducts,
+    updatedRestocks,
+    updatedExpenses,
+    deletedRestock: target,
+    revertedStockQty,
+  };
+}
+
+/**
+ * Elimina todos los registros de compras asociados a un proveedor específico.
+ * Permite revertir el stock sumado por error y cancela los egresos correspondientes.
+ */
+export function deleteSupplierRecords(
+  supplierName: string,
+  revertStock: boolean,
+  products: Product[],
+  restocks: RestockRecord[],
+  expenses: ExpenseRecord[]
+): {
+  updatedProducts: Product[];
+  updatedRestocks: RestockRecord[];
+  updatedExpenses: ExpenseRecord[];
+  deletedCount: number;
+} {
+  const normName = supplierName.trim().toLowerCase();
+  const matchedRestocks = restocks.filter(
+    (r) => r.supplierName.trim().toLowerCase() === normName
+  );
+
+  if (matchedRestocks.length === 0) {
+    return {
+      updatedProducts: products,
+      updatedRestocks: restocks,
+      updatedExpenses: expenses,
+      deletedCount: 0,
+    };
+  }
+
+  let updatedProducts = [...products];
+
+  if (revertStock) {
+    // Group deductions by product
+    const qtyByProduct = new Map<string, number>();
+    for (const r of matchedRestocks) {
+      const prev = qtyByProduct.get(r.productId) || 0;
+      qtyByProduct.set(r.productId, prev + r.quantityAdded);
+    }
+
+    updatedProducts = products.map((p) => {
+      const deduction = qtyByProduct.get(p.id);
+      if (deduction && deduction > 0) {
+        const revertedStock = Math.max(0, Math.round((p.stock - deduction) * 1000) / 1000);
+        return {
+          ...p,
+          stock: revertedStock,
+        };
+      }
+      return p;
+    });
+  }
+
+  // Collect all expense IDs across matched restocks
+  const allExpenseIds = new Set<string>();
+  const supplierInvoiceNumbers = new Set<string>();
+
+  for (const r of matchedRestocks) {
+    if (r.expenseIds) {
+      r.expenseIds.forEach((id) => allExpenseIds.add(id));
+    }
+    if (r.supplierInvoiceNumber) {
+      supplierInvoiceNumbers.add(r.supplierInvoiceNumber.trim());
+    }
+  }
+
+  const updatedExpenses = expenses.filter((e) => {
+    if (allExpenseIds.has(e.id)) return false;
+    if (e.recipient && e.recipient.trim().toLowerCase() === normName && e.category === 'Mercancía/Proveedores') {
+      return false;
+    }
+    if (e.reference && supplierInvoiceNumbers.has(e.reference.trim())) {
+      return false;
+    }
+    return true;
+  });
+
+  const updatedRestocks = restocks.filter(
+    (r) => r.supplierName.trim().toLowerCase() !== normName
+  );
+
+  saveProducts(updatedProducts);
+  saveRestocks(updatedRestocks);
+  saveExpenses(updatedExpenses);
+
+  return {
+    updatedProducts,
+    updatedRestocks,
+    updatedExpenses,
+    deletedCount: matchedRestocks.length,
+  };
+}
+
 // Custom event for cross-tab or component sync
 function notifyStorageChange(type: string) {
   window.dispatchEvent(new CustomEvent('jhojan_pos_sync', { detail: { type } }));
@@ -749,19 +909,20 @@ ${isFiado ? `⚠️ *Saldo Pendiente:* ${formatUSD(ticket.pendingUSD)} (~${forma
 
 ¡Que disfrutes mucho tu compra y que tengas un excelente y bendecido día! ✨❤️`;
 
-  const url = cleanPhone ? `https://wa.me/${cleanPhone}?text=${encodeURIComponent(message)}` : '';
+  const url = cleanPhone
+    ? `https://wa.me/${cleanPhone}?text=${encodeURIComponent(message)}`
+    : `https://wa.me/?text=${encodeURIComponent(message)}`;
 
   return { url, message };
 }
 
-// --- WhatsApp Payment Reminder Generator ---
+// --- WhatsApp Payment Reminder Generator (Strictly USD / Moneda Estadounidense) ---
 export function generateWhatsAppReminder(
   debtor: DebtorCustomer,
   settings: AppSettings
 ): { url: string; message: string } {
   const cleanPhone = sanitizePhoneForWhatsApp(debtor.phone);
   const totalUSD = debtor.totalDebtUSD;
-  const totalVES = totalUSD * settings.bcvRate;
 
   // Format date helper
   const formatDate = (iso: string) => {
@@ -775,44 +936,39 @@ export function generateWhatsAppReminder(
     }
   };
 
-  // Build purchases detail lines
+  // Build purchases detail lines strictly in USD ($) currency
   const purchasesLines = debtor.tickets
     .map((t) => {
       const dateStr = formatDate(t.date);
-      const itemsBrief = t.items.map((it) => `${it.product.name} (${formatQuantity(it.quantity, it.product.unit)})`).join(', ');
-      return `• *Ticket #${t.ticketNumber}* (${dateStr}): Saldo pendiente: *${formatUSD(t.pendingUSD)}* (~${formatVES(t.pendingUSD * settings.bcvRate)})\n   _Detalle:_ ${itemsBrief}`;
+      const itemsBrief = t.items
+        .map((it) => `${it.product.name} (${formatQuantity(it.quantity, it.product.unit)})`)
+        .join(', ');
+      return `• *Factura #${t.ticketNumber}* (${dateStr}): Saldo pendiente: *${formatUSD(t.pendingUSD)}*\n   _Detalle:_ ${itemsBrief}`;
     })
     .join('\n\n');
 
-  // Formatted WhatsApp message according to exact specifications
-  const message = `👋 *Estimado(a) ${debtor.name}*, un cordial saludo de parte de *${settings.businessName}* 🧀🥩
+  // Friendly, cordial and clear WhatsApp reminder strictly in USD currency
+  const message = `👋 *Estimado(a) ${debtor.name}*, ¡esperamos que se encuentre muy bien! Le enviamos un cordial saludo de parte de *${settings.businessName}* 🧀🥩
 
-Le escribimos para recordarle amablemente el estado de su cuenta de compras fiadas en nuestro local:
+Nos comunicamos de manera muy atenta para recordarle cordialmente el estado de su cuenta de compras a crédito en nuestro local:
 
 📋 *DETALLE DE COMPRAS PENDIENTES:*
 ${purchasesLines}
 
 ━━━━━━━━━━━━━━━━━━━━
-💰 *TOTAL EXIGIBLE A CANCELAR:*
+💵 *SALDO TOTAL PENDIENTE A CANCELAR:*
 👉 *${formatUSD(totalUSD)} USD*
-👉 *${formatVES(totalVES)}*
-_(Calculado a la Tasa Oficial BCV del día: ${formatVES(settings.bcvRate)} / USD)_
 ━━━━━━━━━━━━━━━━━━━━
 
-🏦 *DATOS BANCARIOS PARA PAGO MÓVIL:*
-• *Banco Receptor:* ${settings.pagoMovil.bankName} (${settings.pagoMovil.bankCode})
-• *Teléfono:* ${settings.pagoMovil.phone}
-• *Cédula / RIF:* ${settings.pagoMovil.cedula}
-• *Monto exacto en Bs.:* ${formatVES(totalVES)}
+Le recordamos amablemente que puede realizar el pago de su saldo en divisa en efectivo ($ USD) directamente en nuestra tienda o a través de los medios previamente convenidos.
 
-🏪 *Otras formas de pago:*
-Si lo prefiere, también puede cancelar en efectivo (Dólares o Bolívares) o Punto de Venta directamente en nuestra charcutería.
+Si ya realizó algún abono o pago recientemente, le agradecemos enviarnos el comprobante por este mismo chat de WhatsApp para actualizar de inmediato su cuenta y registrar su saldo.
 
-🙏 *Por favor, al realizar su abono o pago, envíenos el comprobante o número de referencia por este medio* para registrarlo inmediatamente en su cuenta y actualizar su saldo.
+¡Agradecemos inmensamente su confianza, preferencia y fidelidad con nosotros! Le deseamos un feliz y bendecido día. ✨😊`;
 
-¡Muchas gracias por su preferencia y confianza! Que tenga un excelente día. ✨`;
-
-  const url = `https://wa.me/${cleanPhone}?text=${encodeURIComponent(message)}`;
+  const url = cleanPhone
+    ? `https://wa.me/${cleanPhone}?text=${encodeURIComponent(message)}`
+    : `https://wa.me/?text=${encodeURIComponent(message)}`;
 
   return { url, message };
 }

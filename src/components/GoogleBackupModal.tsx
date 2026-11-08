@@ -83,15 +83,23 @@ export const GoogleBackupModal: React.FC<GoogleBackupModalProps> = ({
   );
   const [isSendingTelegram, setIsSendingTelegram] = useState(false);
 
+  const currentTickets = useMemo(() => {
+    if (!isOpen) return [];
+    return tickets && tickets.length > 0 ? tickets : loadTickets();
+  }, [tickets, isOpen]);
+
+  const availableMonths = useMemo(() => {
+    if (!isOpen) return [];
+    return getAvailableTicketMonths(currentTickets);
+  }, [currentTickets, isOpen]);
+
   if (!isOpen) return null;
 
-  const currentTickets = tickets && tickets.length > 0 ? tickets : loadTickets();
   const currentProducts = products && products.length > 0 ? products : loadProducts();
   const currentSettings = settings ? settings : loadSettings();
   const currentExpenses = expenses && expenses.length > 0 ? expenses : loadExpenses();
   const currentMermas = mermas && mermas.length > 0 ? mermas : loadMermas();
   const currentDebtors = getDebtorsSummary(currentTickets, currentSettings.bcvRate);
-  const availableMonths = useMemo(() => getAvailableTicketMonths(currentTickets), [currentTickets]);
 
   const telegramPackage = generateUnifiedTelegramBackup({
     tickets: currentTickets,

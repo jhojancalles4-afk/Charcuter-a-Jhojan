@@ -25,6 +25,7 @@ import {
   RefreshCw,
   FileSpreadsheet,
   Scissors,
+  Share2,
 } from 'lucide-react';
 import { AppSettings, ExpenseRecord, MermaRecord, Product, RestockRecord, SaleTicket } from '../types';
 import {
@@ -32,8 +33,7 @@ import {
   formatUSD,
   formatVES,
   importTicketsBatch,
-  generateTelegramThankYou,
-  generateTelegramTicketsSummary,
+  generateWhatsAppThankYou,
   exportMonthlySales,
   exportTicketsToCSV,
   getAvailableTicketMonths,
@@ -400,20 +400,6 @@ export const TicketsHistoryModule: React.FC<TicketsHistoryModuleProps> = ({
                 <span>Cuadre de Caja</span>
               </button>
 
-              <button
-                type="button"
-                id="btn-telegram-tickets-summary"
-                onClick={() => {
-                  const { url } = generateTelegramTicketsSummary(tickets, settings);
-                  window.open(url, '_blank');
-                }}
-                className="px-3 py-2 rounded-xl bg-sky-950/60 hover:bg-sky-900/80 border border-sky-800/60 text-sky-300 hover:text-white text-xs font-bold flex items-center gap-1.5 transition shadow-sm cursor-pointer active:scale-95"
-                title="Enviar respaldo de facturas por Telegram"
-              >
-                <Send className="w-3.5 h-3.5 text-sky-400" />
-                <span>Respaldo Telegram</span>
-              </button>
-
               {/* Exportar Ventas Excel / CSV */}
               <div className="flex items-center bg-slate-950 p-0.5 rounded-xl border border-slate-800">
                 <button
@@ -655,17 +641,19 @@ export const TicketsHistoryModule: React.FC<TicketsHistoryModuleProps> = ({
                       <span className="hidden sm:inline">Factura</span>
                     </button>
 
-                    {/* Quick Telegram share */}
+                    {/* Quick WhatsApp Business thank-you */}
                     <button
                       type="button"
                       onClick={() => {
-                        const { url } = generateTelegramThankYou(ticket, settings);
-                        window.open(url, '_blank');
+                        const { url } = generateWhatsAppThankYou(ticket, settings);
+                        if (url) {
+                          window.open(url, '_blank');
+                        }
                       }}
-                      className="p-1.5 rounded-xl bg-sky-950/60 hover:bg-sky-900/80 text-sky-400 hover:text-white transition flex items-center justify-center cursor-pointer border border-sky-800/60"
-                      title="Enviar comprobante de esta factura por Telegram"
+                      className="p-1.5 rounded-xl bg-emerald-950/60 hover:bg-emerald-900/80 text-emerald-400 hover:text-white transition flex items-center justify-center cursor-pointer border border-emerald-800/60"
+                      title="Enviar agradecimiento por WhatsApp Business"
                     >
-                      <Send className="w-3.5 h-3.5" />
+                      <Share2 className="w-3.5 h-3.5" />
                     </button>
 
                     {/* Delete / Void Bad Ticket button */}

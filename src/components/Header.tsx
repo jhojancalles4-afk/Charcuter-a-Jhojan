@@ -16,14 +16,17 @@ import {
   Award,
   ShieldCheck,
   Truck,
+  Users,
+  Zap,
+  Globe,
 } from 'lucide-react';
 import { AppSettings } from '../types';
 import { formatVES, formatUSD } from '../services/storage';
 import { OfflineIndicator } from './OfflineIndicator';
 
 interface HeaderProps {
-  activeTab: 'pos' | 'tickets' | 'fiados' | 'restocks' | 'inventory' | 'settings';
-  setActiveTab: (tab: 'pos' | 'tickets' | 'fiados' | 'restocks' | 'inventory' | 'settings') => void;
+  activeTab: 'pos' | 'tickets' | 'fiados' | 'restocks' | 'inventory' | 'settings' | 'ai';
+  setActiveTab: (tab: 'pos' | 'tickets' | 'fiados' | 'restocks' | 'inventory' | 'settings' | 'ai') => void;
   settings: AppSettings;
   onUpdateBcvRate: (newRate: number) => void;
   onUpdatePreferentialRate?: (newRate: number) => void;
@@ -35,7 +38,6 @@ interface HeaderProps {
   isSyncing?: boolean;
   fidelisRewardsReadyCount?: number;
   onOpenFidelis?: () => void;
-  onOpenGoogleBackup?: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -50,7 +52,6 @@ export const Header: React.FC<HeaderProps> = ({
   totalDebtUSD,
   fidelisRewardsReadyCount = 0,
   onOpenFidelis,
-  onOpenGoogleBackup,
 }) => {
   const [isEditingRate, setIsEditingRate] = useState(false);
   const [tempRate, setTempRate] = useState(settings.bcvRate.toString());
@@ -241,31 +242,6 @@ export const Header: React.FC<HeaderProps> = ({
               )}
             </div>
 
-            {/* Unified Backup Hub Button (Google Drive & Telegram) */}
-            {onOpenGoogleBackup && (
-              <button
-                type="button"
-                onClick={onOpenGoogleBackup}
-                className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-slate-800/90 hover:bg-slate-800 border border-sky-800/60 hover:border-sky-500/60 transition shadow-xs cursor-pointer text-slate-200"
-                title="Centro de Respaldos: Google Drive y Telegram"
-              >
-                <div className="flex items-center justify-center w-5 h-5 rounded bg-sky-950/80 text-sky-400 border border-sky-800/40">
-                  <ShieldCheck className="w-3 h-3" />
-                </div>
-                <div className="text-left hidden sm:block">
-                  <span className="text-[9px] font-medium text-sky-400 uppercase tracking-wider block leading-tight">
-                    Respaldos
-                  </span>
-                  <span className="text-[10px] font-mono text-slate-300 font-semibold leading-tight block">
-                    Drive & Telegram
-                  </span>
-                </div>
-                <span className="sm:hidden text-[10px] font-semibold text-sky-300">
-                  Respaldos
-                </span>
-              </button>
-            )}
-
             {/* Local Storage & Connectivity Status */}
             <OfflineIndicator />
           </div>
@@ -379,6 +355,19 @@ export const Header: React.FC<HeaderProps> = ({
           >
             <Package className="w-4 h-4" />
             <span>Inventario</span>
+          </button>
+
+          <button
+            id="nav-tab-ai"
+            onClick={() => setActiveTab('ai')}
+            className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs sm:text-sm font-semibold transition whitespace-nowrap cursor-pointer ${
+              activeTab === 'ai'
+                ? 'bg-purple-600 text-white shadow-md shadow-purple-950/50'
+                : 'text-purple-300 hover:text-white hover:bg-purple-950/60 border border-purple-500/30 bg-purple-500/10'
+            }`}
+          >
+            <Sparkles className="w-4 h-4 text-purple-400" />
+            <span>Copiloto IA</span>
           </button>
 
           <button

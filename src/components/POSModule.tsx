@@ -24,7 +24,7 @@ import {
   Check,
 } from 'lucide-react';
 import { AppSettings, CartItem, FidelisCustomerProfile, PaymentMethod, PaymentSplit, Product, ProductCategory, SaleTicket } from '../types';
-import { formatUSD, formatVES, formatQuantity, sanitizePhoneForWhatsApp } from '../services/storage';
+import { formatUSD, formatVES, formatQuantity, sanitizePhoneForWhatsApp, generateWhatsAppThankYou } from '../services/storage';
 import { ThermalReceiptModal } from './ThermalReceiptModal';
 import { CameraScannerModal } from './CameraScannerModal';
 import { FidelisExpressWidget } from './FidelisExpressWidget';
@@ -576,6 +576,18 @@ export const POSModule: React.FC<POSModuleProps> = ({
     };
 
     onCompleteSale(newTicket, updatedProducts);
+
+    // Enviar mensaje de agradecimiento a clientes a través de WhatsApp Business
+    if (newTicket.customerPhone && newTicket.customerPhone.trim()) {
+      try {
+        const { url } = generateWhatsAppThankYou(newTicket, settings);
+        if (url) {
+          window.open(url, '_blank');
+        }
+      } catch (err) {
+        console.warn('No se pudo abrir WhatsApp Business automáticamente:', err);
+      }
+    }
 
     // Show ticket confirmation modal
     setCompletedTicket(newTicket);

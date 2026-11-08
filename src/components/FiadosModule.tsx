@@ -31,9 +31,6 @@ import {
   formatVES,
   formatQuantity,
   generateWhatsAppReminder,
-  generateTelegramReminder,
-  generateTelegramFiadosReport,
-  generateTelegramShareUrl,
   amortizeCustomerPayment,
   sanitizePhoneForWhatsApp,
   deleteDebtorAccount,
@@ -349,20 +346,6 @@ export const FiadosModule: React.FC<FiadosModuleProps> = ({
 
           {/* Actions & Search */}
           <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap">
-            <button
-              type="button"
-              id="btn-telegram-fiados-report"
-              onClick={() => {
-                const { url } = generateTelegramFiadosReport(debtorsList, settings);
-                window.open(url, '_blank');
-              }}
-              className="px-3 py-2 rounded-xl bg-sky-950/60 hover:bg-sky-900/80 border border-sky-800/60 text-sky-300 hover:text-white text-xs font-bold flex items-center gap-1.5 transition shadow-sm cursor-pointer whitespace-nowrap active:scale-95"
-              title="Enviar respaldo completo del libro de fiados por Telegram"
-            >
-              <Send className="w-3.5 h-3.5 text-sky-400" />
-              <span>Respaldo Telegram</span>
-            </button>
-
             {/* Exportar Deudores a Excel / CSV */}
             <div className="flex items-center bg-slate-950 p-0.5 rounded-xl border border-slate-800">
               <button
@@ -457,37 +440,14 @@ export const FiadosModule: React.FC<FiadosModuleProps> = ({
                     {/* WhatsApp 1-Touch Reminder Button */}
                     <button
                       type="button"
-                      id={`btn-wa-reminder-${debtor.phone}`}
+                      id={`btn-wa-reminder-${debtor.phone || debtor.name}`}
                       onClick={() => handleOpenReminder(debtor)}
-                      disabled={!debtor.phone}
-                      className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold transition shadow-xs cursor-pointer ${
-                        debtor.phone
-                          ? 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-emerald-950/40'
-                          : 'bg-slate-800 text-slate-500 cursor-not-allowed'
-                      }`}
-                      title={
-                        debtor.phone
-                          ? 'Abrir recordatorio de cobro por WhatsApp con datos de Pago Móvil'
-                          : 'Cliente sin número telefónico registrado'
-                      }
+                      className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold transition shadow-xs cursor-pointer bg-emerald-600 hover:bg-emerald-500 text-white shadow-emerald-950/40"
+                      title="Enviar recordatorio cordial de pago por WhatsApp (en divisa $ USD)"
                     >
                       <MessageCircle className="w-3.5 h-3.5" />
-                      <span className="hidden sm:inline">WhatsApp</span>
-                    </button>
-
-                    {/* Telegram Reminder Button */}
-                    <button
-                      type="button"
-                      id={`btn-tg-reminder-${debtor.phone || debtor.name}`}
-                      onClick={() => {
-                        const { url } = generateTelegramReminder(debtor, settings);
-                        window.open(url, '_blank');
-                      }}
-                      className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-sky-600 hover:bg-sky-500 text-white text-xs font-bold transition shadow-xs shadow-sky-950/40 cursor-pointer"
-                      title="Enviar recordatorio de cobro por Telegram"
-                    >
-                      <Send className="w-3.5 h-3.5" />
-                      <span className="hidden sm:inline">Telegram</span>
+                      <span className="hidden sm:inline">Recordatorio WhatsApp</span>
+                      <span className="sm:hidden">WhatsApp</span>
                     </button>
 
                     {/* Abono button */}
@@ -703,7 +663,7 @@ export const FiadosModule: React.FC<FiadosModuleProps> = ({
             </div>
 
             <p className="text-xs text-slate-400 mt-2">
-              Mensaje preformateado con detalle exacto de compras, total bimonetario ($/Bs.) y datos bancarios para Pago Móvil:
+              Mensaje preformateado con tono amable y cordial, detalle de compras y saldo pendiente en moneda estadounidense ($ USD):
             </p>
 
             {/* Message Preview Box */}
@@ -733,30 +693,16 @@ export const FiadosModule: React.FC<FiadosModuleProps> = ({
                 )}
               </button>
 
-              <button
-                type="button"
-                id="btn-confirm-send-tg"
-                onClick={() => {
-                  const url = generateTelegramShareUrl(reminderModalData.message);
-                  window.open(url, '_blank');
-                  setReminderModalData(null);
-                }}
-                className="flex-1 py-2.5 rounded-xl bg-sky-500 hover:bg-sky-400 text-white text-xs font-bold flex items-center justify-center gap-1.5 shadow-lg shadow-sky-950/50 cursor-pointer"
-              >
-                <Send className="w-4 h-4" />
-                <span>Enviar por Telegram</span>
-              </button>
-
               <a
                 id="btn-confirm-send-wa"
                 href={reminderModalData.url}
                 target="_blank"
                 rel="noopener noreferrer"
                 onClick={() => setReminderModalData(null)}
-                className="flex-1 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold flex items-center justify-center gap-1.5 shadow-lg shadow-emerald-950/50 cursor-pointer"
+                className="flex-1 py-2.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white text-xs font-bold flex items-center justify-center gap-1.5 shadow-lg shadow-emerald-950/50 cursor-pointer"
               >
                 <MessageCircle className="w-4 h-4" />
-                <span>Abrir WhatsApp</span>
+                <span>Enviar Recordatorio por WhatsApp</span>
               </a>
             </div>
           </div>
