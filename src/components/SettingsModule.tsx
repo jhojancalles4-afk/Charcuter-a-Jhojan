@@ -20,6 +20,7 @@ import {
   Mail,
   Send,
   HardDrive,
+  MessageCircle,
 } from 'lucide-react';
 import { AppSettings } from '../types';
 import { VENEZUELAN_BANKS } from '../data/initialData';
@@ -33,6 +34,10 @@ import {
   loadProducts,
   loadExpenses,
   getDebtorsSummary,
+  DEFAULT_THANK_YOU_TEMPLATE,
+  DEFAULT_REMINDER_TEMPLATE,
+  THANK_YOU_TONE_PRESETS,
+  REMINDER_TONE_PRESETS,
 } from '../services/storage';
 import { CameraScannerModal } from './CameraScannerModal';
 
@@ -65,6 +70,15 @@ export const SettingsModule: React.FC<SettingsModuleProps> = ({
   const [pagoMovilPhone, setPagoMovilPhone] = useState(settings.pagoMovil.phone);
   const [pagoMovilCedula, setPagoMovilCedula] = useState(settings.pagoMovil.cedula);
 
+  // Message Copy Templates
+  const [customThankYouTemplate, setCustomThankYouTemplate] = useState(
+    settings.customThankYouTemplate || DEFAULT_THANK_YOU_TEMPLATE
+  );
+  const [customReminderTemplate, setCustomReminderTemplate] = useState(
+    settings.customReminderTemplate || DEFAULT_REMINDER_TEMPLATE
+  );
+  const [activeTemplateTab, setActiveTemplateTab] = useState<'thank_you' | 'reminder'>('thank_you');
+
   const [savedSuccess, setSavedSuccess] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const [importMessage, setImportMessage] = useState<string | null>(null);
@@ -72,7 +86,6 @@ export const SettingsModule: React.FC<SettingsModuleProps> = ({
   // Camera test modal state
   const [isTestScannerOpen, setIsTestScannerOpen] = useState(false);
   const [testScannedResult, setTestScannedResult] = useState<string | null>(null);
-
 
   // When bank code changes, set appropriate bank name
   const handleBankChange = (code: string) => {
@@ -110,6 +123,8 @@ export const SettingsModule: React.FC<SettingsModuleProps> = ({
         phone: pagoMovilPhone.trim(),
         cedula: pagoMovilCedula.trim(),
       },
+      customThankYouTemplate,
+      customReminderTemplate,
     };
 
     onSaveSettings(updated);
@@ -479,6 +494,177 @@ export const SettingsModule: React.FC<SettingsModuleProps> = ({
               • Cédula / RIF: {pagoMovilCedula}<br />
               • Monto exacto: Bs. [Calculado según tasa BCV]
             </div>
+          </div>
+        </div>
+
+        {/* 4. Plantillas de Mensajes de WhatsApp & Copywriting */}
+        <div className="space-y-4 pt-4 border-t border-slate-800">
+          <div className="flex items-center justify-between">
+            <h4 className="text-xs font-bold text-purple-400 uppercase tracking-wider flex items-center gap-1.5">
+              <MessageCircle className="w-4 h-4 text-purple-400" />
+              <span>4. Plantillas de Mensajes de WhatsApp & Copywriting</span>
+            </h4>
+            <span className="text-[10px] font-mono text-slate-400">
+              Personalizable con IA
+            </span>
+          </div>
+          <p className="text-xs text-slate-400">
+            Define el contenido y formato de los mensajes que se envían automáticamente al cliente tras una compra o al recordarle sus pagos a crédito.
+          </p>
+
+          {/* Toggle between Thank You & Reminder */}
+          <div className="flex rounded-xl bg-slate-950 p-1 border border-slate-800">
+            <button
+              type="button"
+              onClick={() => setActiveTemplateTab('thank_you')}
+              className={`flex-1 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer ${
+                activeTemplateTab === 'thank_you'
+                  ? 'bg-purple-600 text-white shadow-xs'
+                  : 'text-slate-400 hover:text-white'
+              }`}
+            >
+              🧾 Mensaje de Agradecimiento (Facturas)
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveTemplateTab('reminder')}
+              className={`flex-1 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer ${
+                activeTemplateTab === 'reminder'
+                  ? 'bg-purple-600 text-white shadow-xs'
+                  : 'text-slate-400 hover:text-white'
+              }`}
+            >
+              📋 Mensaje de Recordatorio (Fiados)
+            </button>
+          </div>
+
+          {/* Tones presets */}
+          <div className="flex items-center gap-1.5 flex-wrap">
+            <span className="text-[11px] font-semibold text-slate-400">Presets de tono:</span>
+            {activeTemplateTab === 'thank_you' ? (
+              <>
+                <button
+                  type="button"
+                  onClick={() => setCustomThankYouTemplate(THANK_YOU_TONE_PRESETS.calido)}
+                  className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-medium cursor-pointer"
+                >
+                  🥰 Cálido y Cercano
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setCustomThankYouTemplate(THANK_YOU_TONE_PRESETS.dinamico)}
+                  className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-medium cursor-pointer"
+                >
+                  ⚡ Ejecutivo Rápido
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setCustomThankYouTemplate(THANK_YOU_TONE_PRESETS.fidelis)}
+                  className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-medium cursor-pointer"
+                >
+                  ⭐ Fidelis VIP
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setCustomThankYouTemplate(THANK_YOU_TONE_PRESETS.gourmet)}
+                  className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-medium cursor-pointer"
+                >
+                  🍷 Selección Gourmet
+                </button>
+              </>
+            ) : (
+              <>
+                <button
+                  type="button"
+                  onClick={() => setCustomReminderTemplate(REMINDER_TONE_PRESETS.cordial)}
+                  className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-medium cursor-pointer"
+                >
+                  🤝 Cordial y Amigable
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setCustomReminderTemplate(REMINDER_TONE_PRESETS.asertivo)}
+                  className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-medium cursor-pointer"
+                >
+                  💼 Comercial Asertivo
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setCustomReminderTemplate(REMINDER_TONE_PRESETS.urgente)}
+                  className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-medium cursor-pointer"
+                >
+                  ⏰ Prioritario Urgente
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setCustomReminderTemplate(REMINDER_TONE_PRESETS.efectivo)}
+                  className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-medium cursor-pointer"
+                >
+                  💵 Incentivo en Dólar
+                </button>
+              </>
+            )}
+          </div>
+
+          {/* Variables Pills */}
+          <div>
+            <span className="text-[10px] text-slate-400 block mb-1">
+              Etiquetas dinámicas (haz clic para insertar):
+            </span>
+            <div className="flex flex-wrap gap-1">
+              {(activeTemplateTab === 'thank_you'
+                ? ['{cliente}', '{negocio}', '{factura}', '{fecha}', '{totalUSD}', '{totalVES}', '{metodoPago}', '{fidelis}']
+                : ['{cliente}', '{negocio}', '{totalUSD}', '{totalVES}', '{comprasPendientes}', '{pagoMovil}']
+              ).map((tag) => (
+                <button
+                  key={tag}
+                  type="button"
+                  onClick={() => {
+                    if (activeTemplateTab === 'thank_you') {
+                      setCustomThankYouTemplate((prev) => `${prev} ${tag}`);
+                    } else {
+                      setCustomReminderTemplate((prev) => `${prev} ${tag}`);
+                    }
+                  }}
+                  className="px-2 py-0.5 rounded-md bg-purple-950/80 hover:bg-purple-900 border border-purple-800/60 text-purple-300 text-[10px] font-mono transition cursor-pointer"
+                >
+                  {tag}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Textarea */}
+          <textarea
+            rows={7}
+            value={activeTemplateTab === 'thank_you' ? customThankYouTemplate : customReminderTemplate}
+            onChange={(e) => {
+              if (activeTemplateTab === 'thank_you') {
+                setCustomThankYouTemplate(e.target.value);
+              } else {
+                setCustomReminderTemplate(e.target.value);
+              }
+            }}
+            className="w-full bg-slate-950 border border-slate-800 rounded-2xl p-3 text-xs text-slate-200 font-mono focus:outline-none focus:border-purple-500 leading-relaxed"
+          />
+
+          <div className="flex justify-between items-center text-xs">
+            <button
+              type="button"
+              onClick={() => {
+                if (activeTemplateTab === 'thank_you') {
+                  setCustomThankYouTemplate(DEFAULT_THANK_YOU_TEMPLATE);
+                } else {
+                  setCustomReminderTemplate(DEFAULT_REMINDER_TEMPLATE);
+                }
+              }}
+              className="text-slate-400 hover:text-white transition cursor-pointer"
+            >
+              Restaurar plantilla por defecto
+            </button>
+            <span className="text-slate-500 text-[11px]">
+              Se guardará al presionar "Guardar Ajustes"
+            </span>
           </div>
         </div>
 

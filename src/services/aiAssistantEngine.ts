@@ -2,6 +2,7 @@ import {
   AppSettings,
   DebtorCustomer,
   ExpenseRecord,
+  MarketingPromotion,
   MermaRecord,
   Product,
   RestockRecord,
@@ -14,21 +15,46 @@ import {
   formatVES,
   formatQuantity,
   generateWhatsAppReminder,
+  THANK_YOU_TONE_PRESETS,
+  REMINDER_TONE_PRESETS,
+  DEFAULT_THANK_YOU_TEMPLATE,
+  DEFAULT_REMINDER_TEMPLATE,
 } from './storage';
 import {
   calculateAIRestockPredictions,
   generateAIPatternsReport,
 } from './restockAI';
 
+export type AIActionType =
+  | 'set_bcv_rate'
+  | 'set_pref_rate'
+  | 'create_product'
+  | 'update_product_price'
+  | 'update_product_stock'
+  | 'toggle_product_status'
+  | 'add_expense'
+  | 'delete_expense'
+  | 'register_abono_fiado'
+  | 'register_restock_order'
+  | 'register_supplier_abono'
+  | 'register_merma'
+  | 'create_fidelis_customer'
+  | 'claim_fidelis_reward'
+  | 'void_ticket'
+  | 'navigate_tab'
+  | 'update_reminder_template'
+  | 'update_thank_you_template'
+  | 'save_promotion'
+  | 'share_promotion'
+  | 'open_reminder'
+  | 'update_business_info'
+  | 'execute_cierre_z'
+  | 'toggle_autonomous_mode'
+  | 'open_backup';
+
 export interface AIActionProposal {
   id: string;
-  type:
-    | 'set_bcv_rate'
-    | 'set_pref_rate'
-    | 'adjust_stock'
-    | 'add_stock'
-    | 'open_reminder'
-    | 'navigate_tab';
+  type: AIActionType;
   title: string;
   description: string;
   payload: any;
@@ -40,12 +66,13 @@ export interface AIChatMessage {
   sender: 'user' | 'ai';
   text: string;
   timestamp: string;
-  category?: 'demand' | 'report' | 'action' | 'general' | 'debtors' | 'inventory';
+  category?: 'demand' | 'report' | 'action' | 'general' | 'debtors' | 'inventory' | 'marketing' | 'template';
   structuredData?: {
-    type: 'table' | 'cards' | 'report' | 'action_proposal';
+    type: 'table' | 'cards' | 'report' | 'action_proposal' | 'promotion_card';
     title?: string;
     items?: any[];
     summary?: Record<string, string | number>;
+    promotion?: MarketingPromotion;
   };
   actionProposal?: AIActionProposal;
 }
@@ -434,6 +461,379 @@ export function processAIChatQuery(
     }
   }
 
+  // 3. CONTROL TOTAL: Alternar Modo Autónomo / Piloto Automático
+  // Ej: "activar modo autonomo", "desactivar modo autonomo", "modo autonomo"
+  if (q.includes('autonomo') || q.includes('piloto automatico') || q.includes('control total automatico')) {
+    const activate = !q.includes('desactivar') && !q.includes('apagar') && !q.includes('desactivado');
+    return {
+      id: `msg-${Date.now()}`,
+      sender: 'ai',
+      category: 'action',
+      timestamp,
+      text: activate
+        ? `⚡ **Modo Autónomo de Control Total ACTIVADO:**\n\nA partir de este momento, cualquier orden que me des *(ajustar precios, registrar gastos, crear productos, modificar stock, abonar fiados, cambiar tasas)* se ejecutará **de forma inmediata y directa** en la base de datos sin requerir confirmación manual.`
+        : `🛡️ **Modo Autónomo DESACTIVADO (Modo Asistido):**\n\nHe cambiado el sistema al modo asistido. Cada vez que me solicites una operación, te mostraré una tarjeta de resumen con botón de confirmación antes de impactar el sistema.`,
+      actionProposal: {
+        id: `act-auto-${Date.now()}`,
+        type: 'toggle_autonomous_mode',
+        title: activate ? 'Activar Modo Autónomo' : 'Desactivar Modo Autónomo',
+        description: activate ? 'Permite a la IA ejecutar órdenes directamente sin confirmación manual.' : 'Requiere botón de confirmación para cada orden.',
+        payload: { enabled: activate },
+        status: 'pending',
+      },
+    };
+  }
+
+  // 4. CONTROL TOTAL: Crear Nuevo Producto
+  // Ej: "crea un producto Queso Paisa a 6.5$ costo 4.5$ stock 15kg", "nuevo producto Mortadela Tapara a 3.2$"
+  if (
+    q.includes('crear producto') ||
+    q.includes('nuevo producto') ||
+    q.includes('agregar producto') ||
+    q.includes('crea el producto') ||
+    q.includes('añadir producto')
+  ) {
+    // Extraer detalles con expresiones regulares o defaults
+    const priceMatch = q.match(/(?:precio|a|\$)\s*\$?(\d+[.,]?\d*)/i);
+    const costMatch = q.match(/(?:costo|coste)\s*\$?(\d+[.,]?\d*)/i);
+    const stockMatch = q.match(/(?:stock|cantidad|inicial)\s*(\d+[.,]?\d*)/i);
+    const isUnit = q.includes('unid') || q.includes('unidad') || q.includes('paquete') || q.includes('pieza');
+
+    let cleanName = query
+      .replace(/crear\s*(?:un\s*)?(?:nuevo\s*)?producto/i, '')
+      .replace(/agregar\s*(?:un\s*)?(?:nuevo\s*)?producto/i, '')
+      .replace(/añadir\s*(?:un\s*)?(?:nuevo\s*)?producto/i, '')
+      .replace(/(?:precio|a|\$)\s*\$?(\d+[.,]?\d*).*/i, '')
+      .trim();
+
+    if (!cleanName || cleanName.length < 2) {
+      cleanName = 'Nuevo Producto Charcutería';
+    }
+
+    const priceUSD = priceMatch ? parseFloat(priceMatch[1].replace(',', '.')) : 5.0;
+    const costUSD = costMatch ? parseFloat(costMatch[1].replace(',', '.')) : Math.round(priceUSD * 0.72 * 100) / 100;
+    const stock = stockMatch ? parseFloat(stockMatch[1].replace(',', '.')) : 10;
+    const unit: 'KG' | 'UN' = isUnit ? 'UN' : 'KG';
+
+    // Determinar categoría válida por nombre
+    let category: 'Quesos' | 'Embutidos' | 'Lácteos' | 'Varios' = 'Embutidos';
+    const lowerName = cleanName.toLowerCase();
+    if (lowerName.includes('queso') || lowerName.includes('mozzarella') || lowerName.includes('gouda') || lowerName.includes('parmesano')) {
+      category = 'Quesos';
+    } else if (lowerName.includes('leche') || lowerName.includes('crema') || lowerName.includes('suero') || lowerName.includes('mantequilla')) {
+      category = 'Lácteos';
+    } else if (lowerName.includes('pan') || lowerName.includes('harina') || lowerName.includes('refresco') || lowerName.includes('salsa')) {
+      category = 'Varios';
+    }
+
+    return {
+      id: `msg-${Date.now()}`,
+      sender: 'ai',
+      category: 'action',
+      timestamp,
+      text: `📦 **Orden de Catálogo: Creación de Nuevo Producto**\n\n• **Nombre:** **${cleanName}**\n• **Categoría:** ${category}\n• **Precio de Venta:** **${formatUSD(priceUSD)} / ${unit}** (~${formatVES(priceUSD * bcv)} Bs.)\n• **Costo Unitario:** ${formatUSD(costUSD)} / ${unit}\n• **Stock Inicial:** ${formatQuantity(stock, unit)}\n\n¿Procedo a ingresarlo en el inventario activo de la tienda?`,
+      actionProposal: {
+        id: `act-new-prod-${Date.now()}`,
+        type: 'create_product',
+        title: `Crear Producto: "${cleanName}" (${formatUSD(priceUSD)}/${unit})`,
+        description: `Se registrará en el catálogo para facturación inmediata con stock inicial de ${formatQuantity(stock, unit)}.`,
+        payload: {
+          name: cleanName,
+          priceUSD,
+          costUSD,
+          stock,
+          unit,
+          category,
+        },
+        status: 'pending',
+      },
+    };
+  }
+
+  // 5. CONTROL TOTAL: Modificar Precio de Producto
+  // Ej: "subir el precio del queso llanero a 5.8$", "cambiar precio de jamón a 8.5", "pon el queso a 6$"
+  const priceUpdateMatch = q.match(/(?:cambiar|modificar|poner|pon|subir|bajar|actualizar|fijar)\s+(?:el\s+)?precio\s+(?:de\s+|del\s+)?(.+?)\s+(?:a|en)\s*\$?(\d+[.,]?\d*)/i);
+  if (priceUpdateMatch) {
+    const rawProdQuery = priceUpdateMatch[1].trim().toLowerCase();
+    const newPrice = parseFloat(priceUpdateMatch[2].replace(',', '.'));
+    const matchedProduct = context.products.find((p) =>
+      p.name.toLowerCase().includes(rawProdQuery) || rawProdQuery.includes(p.name.toLowerCase())
+    );
+
+    if (matchedProduct && !isNaN(newPrice) && newPrice > 0) {
+      return {
+        id: `msg-${Date.now()}`,
+        sender: 'ai',
+        category: 'action',
+        timestamp,
+        text: `🏷️ **Ajuste de Precio para "${matchedProduct.name}":**\n\n• **Precio Actual:** ${formatUSD(matchedProduct.priceUSD)} / ${matchedProduct.unit}\n• **Nuevo Precio Propuesto:** **${formatUSD(newPrice)} / ${matchedProduct.unit}** (~${formatVES(newPrice * bcv)} Bs.)\n• **Variación:** ${newPrice > matchedProduct.priceUSD ? `🔺 +${formatUSD(newPrice - matchedProduct.priceUSD)}` : `🔻 -${formatUSD(matchedProduct.priceUSD - newPrice)}`}\n\n¿Deseas aplicar este nuevo precio de venta de inmediato?`,
+        actionProposal: {
+          id: `act-price-${matchedProduct.id}-${Date.now()}`,
+          type: 'update_product_price',
+          title: `Actualizar precio de ${matchedProduct.name} a ${formatUSD(newPrice)}`,
+          description: `Cambiará el precio de venta en catálogo y en el Punto de Venta.`,
+          payload: {
+            productId: matchedProduct.id,
+            productName: matchedProduct.name,
+            newPriceUSD: newPrice,
+          },
+          status: 'pending',
+        },
+      };
+    }
+  }
+
+  // 6. CONTROL TOTAL: Ajustar Stock de Producto
+  // Ej: "ajusta el stock de queso llanero a 35 kg", "stock de jamon a 12", "pon el inventario de salchicha en 20"
+  const stockUpdateMatch = q.match(/(?:ajustar|cambiar|fijar|actualizar|poner|pon)\s+(?:el\s+)?(?:stock|inventario)\s+(?:de\s+|del\s+)?(.+?)\s+(?:a|en)\s*(\d+[.,]?\d*)/i);
+  if (stockUpdateMatch) {
+    const rawProdQuery = stockUpdateMatch[1].trim().toLowerCase();
+    const newStock = parseFloat(stockUpdateMatch[2].replace(',', '.'));
+    const matchedProduct = context.products.find((p) =>
+      p.name.toLowerCase().includes(rawProdQuery) || rawProdQuery.includes(p.name.toLowerCase())
+    );
+
+    if (matchedProduct && !isNaN(newStock) && newStock >= 0) {
+      return {
+        id: `msg-${Date.now()}`,
+        sender: 'ai',
+        category: 'action',
+        timestamp,
+        text: `📦 **Ajuste de Inventario Físico para "${matchedProduct.name}":**\n\n• **Stock Actual en Sistema:** ${formatQuantity(matchedProduct.stock, matchedProduct.unit)}\n• **Nuevo Stock Físico:** **${formatQuantity(newStock, matchedProduct.unit)}**\n• **Diferencia:** ${formatQuantity(newStock - matchedProduct.stock, matchedProduct.unit)}\n\n¿Deseas asentar este conteo físico en el inventario?`,
+        actionProposal: {
+          id: `act-stock-${matchedProduct.id}-${Date.now()}`,
+          type: 'update_product_stock',
+          title: `Fijar stock de ${matchedProduct.name} en ${formatQuantity(newStock, matchedProduct.unit)}`,
+          description: `Ajustará la cantidad disponible en el catálogo de productos.`,
+          payload: {
+            productId: matchedProduct.id,
+            productName: matchedProduct.name,
+            newStock,
+          },
+          status: 'pending',
+        },
+      };
+    }
+  }
+
+  // 7. CONTROL TOTAL: Registrar Gasto Operativo / Egreso
+  // Ej: "registra gasto de 15$ de hielo y bolsas", "egreso de 50$ en ayudante de mostrador", "gasto de 25$ de luz"
+  const expenseMatch = q.match(/(?:registrar\s+)?(?:gasto|egreso|pago)\s+(?:de\s+)?\$?(\d+[.,]?\d*)\s*(?:\$|usd)?\s*(?:en|de|por)\s*(.+)/i);
+  if (expenseMatch) {
+    const amountUSD = parseFloat(expenseMatch[1].replace(',', '.'));
+    const descriptionRaw = expenseMatch[2].trim();
+    if (!isNaN(amountUSD) && amountUSD > 0) {
+      let category = 'Otros Gastos';
+      const descLower = descriptionRaw.toLowerCase();
+      if (descLower.includes('bolsa') || descLower.includes('empaque') || descLower.includes('hielo') || descLower.includes('papel')) {
+        category = 'Bolsas y Empaques';
+      } else if (descLower.includes('luz') || descLower.includes('agua') || descLower.includes('internet') || descLower.includes('cantv') || descLower.includes('servicio')) {
+        category = 'Servicios';
+      } else if (descLower.includes('nomina') || descLower.includes('ayudante') || descLower.includes('sueldo') || descLower.includes('personal') || descLower.includes('chico') || descLower.includes('cajero')) {
+        category = 'Personal/Nómina';
+      } else if (descLower.includes('mantenimiento') || descLower.includes('reparacion') || descLower.includes('tecnico') || descLower.includes('rebanadora') || descLower.includes('balanza')) {
+        category = 'Mantenimiento';
+      } else if (descLower.includes('alquiler') || descLower.includes('local')) {
+        category = 'Alquiler/Local';
+      }
+
+      const amountVES = amountUSD * bcv;
+      return {
+        id: `msg-${Date.now()}`,
+        sender: 'ai',
+        category: 'action',
+        timestamp,
+        text: `💸 **Registro de Egreso / Gasto Operativo:**\n\n• **Concepto:** **${descriptionRaw}**\n• **Monto:** **${formatUSD(amountUSD)} USD** (~${formatVES(amountVES)} Bs. Tasa BCV)\n• **Categoría Asignada:** ${category}\n• **Impacto:** Se deducirá automáticamente de la Utilidad Neta del negocio en el Reporte P&L.\n\n¿Procedo a asentar el gasto en el libro de egresos?`,
+        actionProposal: {
+          id: `act-exp-${Date.now()}`,
+          type: 'add_expense',
+          title: `Registrar Gasto: ${formatUSD(amountUSD)} (${descriptionRaw})`,
+          description: `Asentará el egreso en la categoría "${category}".`,
+          payload: {
+            description: descriptionRaw,
+            category,
+            amountUSD,
+            amountVES,
+            currency: 'USD',
+            appliedRate: bcv,
+            paymentMethod: 'cash_usd',
+          },
+          status: 'pending',
+        },
+      };
+    }
+  }
+
+  // 8. CONTROL TOTAL: Registrar Abono a Fiado / Deuda de Cliente
+  // Ej: "abona 10$ a carmen", "abono de 20$ al fiado de pedro", "cliente maria abona 15$"
+  const abonoMatch = q.match(/(?:abona(?:r)?|abono\s+de)\s+(?:de\s+)?\$?(\d+[.,]?\d*)\s*(?:\$|usd)?\s*(?:a|al fiado de|para|del cliente)?\s*(.+)/i);
+  if (abonoMatch) {
+    const amountUSD = parseFloat(abonoMatch[1].replace(',', '.'));
+    const debtorQuery = abonoMatch[2].trim().toLowerCase();
+    const matchedDebtor = context.debtors.find((d) =>
+      d.name.toLowerCase().includes(debtorQuery) || debtorQuery.includes(d.name.toLowerCase())
+    );
+
+    if (matchedDebtor && !isNaN(amountUSD) && amountUSD > 0) {
+      const remainingDebt = Math.max(0, matchedDebtor.totalDebtUSD - amountUSD);
+      return {
+        id: `msg-${Date.now()}`,
+        sender: 'ai',
+        category: 'action',
+        timestamp,
+        text: `📋 **Abono a Cuenta por Cobrar (Libro de Fiados):**\n\n• **Cliente:** **${matchedDebtor.name}**\n• **Deuda Actual:** ${formatUSD(matchedDebtor.totalDebtUSD)} USD\n• **Monto del Abono:** **${formatUSD(amountUSD)} USD** (~${formatVES(amountUSD * bcv)} Bs.)\n• **Saldo Restante:** **${formatUSD(remainingDebt)} USD** ${remainingDebt === 0 ? '🎉 *(¡Deuda Totalmente Saldada!)*' : ''}\n\n¿Deseas aplicar este abono de inmediato a sus facturas pendientes?`,
+        actionProposal: {
+          id: `act-abono-${Date.now()}`,
+          type: 'register_abono_fiado',
+          title: `Abonar ${formatUSD(amountUSD)} a ${matchedDebtor.name}`,
+          description: `Disminuirá el saldo fiado pendiente en el libro de deudores.`,
+          payload: {
+            debtorName: matchedDebtor.name,
+            debtorCedula: matchedDebtor.cedula,
+            amountUSD,
+          },
+          status: 'pending',
+        },
+      };
+    }
+  }
+
+  // 9. CONTROL TOTAL: Registrar Merma de Producto
+  // Ej: "registra merma de 0.4 kg de queso por vencimiento", "merma de 0.5 kg de jamón"
+  const mermaMatch = q.match(/(?:registrar\s+)?merma\s+(?:de\s+)?(\d+[.,]?\d*)\s*(?:kg|kilos|unid)?\s*(?:de\s+|del\s+)?(.+?)(?:\s+(?:por|causa|motivo)\s+(.+))?$/i);
+  if (mermaMatch) {
+    const qty = parseFloat(mermaMatch[1].replace(',', '.'));
+    const prodQuery = mermaMatch[2].trim().toLowerCase();
+    const reasonRaw = mermaMatch[3] ? mermaMatch[3].trim() : 'Deterioro / Pérdida en mostrador';
+    const matchedProduct = context.products.find((p) =>
+      p.name.toLowerCase().includes(prodQuery) || prodQuery.includes(p.name.toLowerCase())
+    );
+
+    if (matchedProduct && !isNaN(qty) && qty > 0) {
+      const costPerUnit = matchedProduct.costUSD || matchedProduct.priceUSD * 0.72;
+      const totalLossUSD = qty * costPerUnit;
+      return {
+        id: `msg-${Date.now()}`,
+        sender: 'ai',
+        category: 'action',
+        timestamp,
+        text: `⚖️ **Registro de Merma / Desperdicio:**\n\n• **Producto:** **${matchedProduct.name}**\n• **Cantidad a Descargar:** **${formatQuantity(qty, matchedProduct.unit)}**\n• **Causa Declarada:** ${reasonRaw}\n• **Impacto Económico (Costo):** **${formatUSD(totalLossUSD)} USD**\n• **Stock Resultante:** ${formatQuantity(Math.max(0, matchedProduct.stock - qty), matchedProduct.unit)}\n\n¿Procedo a asentar la merma y descargar el stock en sistema?`,
+        actionProposal: {
+          id: `act-merma-${Date.now()}`,
+          type: 'register_merma',
+          title: `Registrar Merma de ${formatQuantity(qty, matchedProduct.unit)} (${matchedProduct.name})`,
+          description: `Descargará el inventario físico y asentará la pérdida en el historial de mermas.`,
+          payload: {
+            productId: matchedProduct.id,
+            productName: matchedProduct.name,
+            quantity: qty,
+            reason: reasonRaw,
+            lossUSD: totalLossUSD,
+          },
+          status: 'pending',
+        },
+      };
+    }
+  }
+
+  // 10. CONTROL TOTAL: Cierre de Caja / Reporte Z
+  // Ej: "cerrar caja", "cierre de caja", "reporte z de hoy", "hacer cierre"
+  if (
+    q.includes('cierre de caja') ||
+    q.includes('cierre z') ||
+    q.includes('reporte z') ||
+    q.includes('cerrar caja') ||
+    q.includes('cuadre de caja')
+  ) {
+    const today = new Date().toDateString();
+    const todayTickets = context.tickets.filter((t) => !t.isVoided && new Date(t.date).toDateString() === today);
+    const totalTodayUSD = todayTickets.reduce((sum, t) => sum + t.totalUSD, 0);
+
+    return {
+      id: `msg-${Date.now()}`,
+      sender: 'ai',
+      category: 'action',
+      timestamp,
+      text: `🧾 **Cierre de Caja y Generación de Reporte Z (Hoy):**\n\n• **Tickets Facturados Hoy:** ${todayTickets.length} operaciones\n• **Monto Total Facturado:** **${formatUSD(totalTodayUSD)} USD** (~${formatVES(totalTodayUSD * bcv)} Bs.)\n• **Tasa de Cierre:** ${formatVES(context.settings.bcvRate)} Bs.\n\nHe consolidado los totales listos para auditar y generar el comprobante fiscal y térmico de cierre Z.`,
+      actionProposal: {
+        id: `act-z-${Date.now()}`,
+        type: 'execute_cierre_z',
+        title: `Generar Cierre de Caja / Reporte Z Oficial`,
+        description: `Abrirá la auditoría de tickets y el módulo de impresión de Reporte Z.`,
+        payload: { date: today, totalTickets: todayTickets.length, totalUSD: totalTodayUSD },
+        status: 'pending',
+      },
+    };
+  }
+
+  // 11. CONTROL TOTAL: Navegación Inmediata entre Módulos
+  // Ej: "ir al inventario", "abre el pos", "ver fiados", "ir a reposicion", "ver gastos"
+  if (
+    q.includes('ir a') ||
+    q.includes('llevame a') ||
+    q.includes('abrir pos') ||
+    q.includes('abrir fiados') ||
+    q.includes('abrir inventario') ||
+    q.includes('ver fiados') ||
+    q.includes('ver inventario') ||
+    q.includes('ver gastos') ||
+    q.includes('ver tickets')
+  ) {
+    let targetTab: 'pos' | 'tickets' | 'fiados' | 'restocks' | 'inventory' | 'settings' | 'ai' = 'pos';
+    let tabName = 'Punto de Venta (POS)';
+    if (q.includes('inventario') || q.includes('stock') || q.includes('almacen')) {
+      targetTab = 'inventory';
+      tabName = 'Control de Inventario';
+    } else if (q.includes('fiado') || q.includes('deuda') || q.includes('cobrar')) {
+      targetTab = 'fiados';
+      tabName = 'Libro de Fiados';
+    } else if (q.includes('reposicion') || q.includes('proveedor') || q.includes('compras')) {
+      targetTab = 'restocks';
+      tabName = 'Reposición & Cuentas por Pagar';
+    } else if (q.includes('ticket') || q.includes('factura') || q.includes('gasto') || q.includes('historial')) {
+      targetTab = 'tickets';
+      tabName = 'Historial de Facturas & Egresos';
+    } else if (q.includes('ajuste') || q.includes('configuracion') || q.includes('tasa')) {
+      targetTab = 'settings';
+      tabName = 'Ajustes del Sistema';
+    }
+
+    return {
+      id: `msg-${Date.now()}`,
+      sender: 'ai',
+      category: 'action',
+      timestamp,
+      text: `🚀 **Navegación del Sistema:**\n\nHe preparado la orden para cambiar de vista a **${tabName}**.`,
+      actionProposal: {
+        id: `act-nav-${Date.now()}`,
+        type: 'navigate_tab',
+        title: `Ir a pestaña "${tabName}"`,
+        description: `Cambiará la pantalla activa a ${tabName}.`,
+        payload: { tab: targetTab },
+        status: 'pending',
+      },
+    };
+  }
+
+  // 12. CONTROL TOTAL: Copia de Seguridad y Respaldo
+  if (q.includes('copia de seguridad') || q.includes('respaldo') || q.includes('backup') || q.includes('guardar datos')) {
+    return {
+      id: `msg-${Date.now()}`,
+      sender: 'ai',
+      category: 'action',
+      timestamp,
+      text: `💾 **Copia de Seguridad y Respaldo de Datos:**\n\nPuedo exportar o sincronizar todos los datos del sistema *(inventario, tickets, libro de fiados, egresos, clientes fidelis y mermas)* para mantener tu información 100% blindada.`,
+      actionProposal: {
+        id: `act-backup-${Date.now()}`,
+        type: 'open_backup',
+        title: `Abrir Centro de Respaldo & Backup`,
+        description: `Permite exportar a Excel/JSON o sincronizar con Google Cloud.`,
+        payload: {},
+        status: 'pending',
+      },
+    };
+  }
+
   // 3. Detectar consulta de Demanda / Qué se va a agotar / Qué comprar
   if (
     q.includes('demanda') ||
@@ -647,12 +1047,296 @@ export function processAIChatQuery(
     };
   }
 
-  // 7. Respuesta Asistencial General y Multiuso
+  // 7. MANAGER COPY: Modificar Mensaje de Recordatorio de Deudas (Cobranza Fiados)
+  if (
+    q.includes('recordatorio') ||
+    q.includes('mensaje de cobro') ||
+    q.includes('cobrar fiado') ||
+    q.includes('cambiar recordatorio') ||
+    q.includes('modificar recordatorio') ||
+    q.includes('texto de deuda') ||
+    q.includes('plantilla de cobro')
+  ) {
+    let selectedTone: 'cordial' | 'asertivo' | 'urgente' | 'efectivo' = 'cordial';
+    if (q.includes('urgente') || q.includes('firme') || q.includes('vencid') || q.includes('presion')) {
+      selectedTone = 'urgente';
+    } else if (q.includes('asertiv') || q.includes('formal') || q.includes('comercial') || q.includes('serio')) {
+      selectedTone = 'asertivo';
+    } else if (q.includes('efectivo') || q.includes('dolar') || q.includes('divisa') || q.includes('beneficio') || q.includes('ahorro')) {
+      selectedTone = 'efectivo';
+    } else if (q.includes('amigable') || q.includes('suave') || q.includes('calid') || q.includes('cordial')) {
+      selectedTone = 'cordial';
+    }
+
+    const proposedTemplate = REMINDER_TONE_PRESETS[selectedTone];
+    const toneTitles = {
+      cordial: 'Cordial & Respetuoso (Fidelizador)',
+      asertivo: 'Comercial & Asertivo (Control de Cierre)',
+      urgente: 'Prioritario con Fecha Límite (Cobranza Activa)',
+      efectivo: 'Incentivo de Pago en Divisa Efectivo',
+    };
+
+    return {
+      id: `msg-${Date.now()}`,
+      sender: 'ai',
+      category: 'template',
+      timestamp,
+      text: `✍️ **Optimización de Copy para Recordatorio de Cobranza (Libro de Fiados):**\n\nComo tu **Manager Copy**, he redactado una versión estratégica con tono **${toneTitles[selectedTone]}**. Conserva todas las etiquetas inteligentes (\`{cliente}\`, \`{totalUSD}\`, \`{comprasPendientes}\`, etc.) para que se personalice automáticamente para cada cliente:\n\n\`\`\`\n${proposedTemplate}\n\`\`\`\n\n¿Deseas aplicar esta plantilla como el mensaje activo para los recordatorios de WhatsApp?`,
+      actionProposal: {
+        id: `act-remind-${Date.now()}`,
+        type: 'update_reminder_template',
+        title: `Aplicar Plantilla de Recordatorio (${toneTitles[selectedTone]})`,
+        description: `Actualizará el texto que se genera al presionar 'Enviar Recordatorio' en el Libro de Fiados.`,
+        payload: {
+          newTemplate: proposedTemplate,
+          tone: selectedTone,
+        },
+        status: 'pending',
+      },
+    };
+  }
+
+  // 8. MANAGER COPY: Modificar Mensaje de Agradecimiento (Post-Venta / Factura)
+  if (
+    q.includes('agradecimiento') ||
+    q.includes('mensaje de gracias') ||
+    q.includes('mensaje de factura') ||
+    q.includes('cambiar agradecimiento') ||
+    q.includes('modificar agradecimiento') ||
+    q.includes('despedida de factura') ||
+    q.includes('dar las gracias')
+  ) {
+    let selectedTone: 'calido' | 'dinamico' | 'fidelis' | 'gourmet' = 'calido';
+    if (q.includes('corto') || q.includes('rapido') || q.includes('dinamic') || q.includes('conciso') || q.includes('breve')) {
+      selectedTone = 'dinamico';
+    } else if (q.includes('fidelis') || q.includes('sello') || q.includes('premio') || q.includes('puntos')) {
+      selectedTone = 'fidelis';
+    } else if (q.includes('gourmet') || q.includes('elegante') || q.includes('calidad') || q.includes('exclusiv')) {
+      selectedTone = 'gourmet';
+    } else {
+      selectedTone = 'calido';
+    }
+
+    const proposedTemplate = THANK_YOU_TONE_PRESETS[selectedTone];
+    const toneTitles = {
+      calido: 'Cálido & Familiar (Cercanía Total)',
+      dinamico: 'Ejecutivo & Dinámico (Corto y al Grano)',
+      fidelis: 'Fidelis VIP (Enfoque en Sellos y Premios)',
+      gourmet: 'Charcutero Gourmet (Sabor y Calidad Superior)',
+    };
+
+    return {
+      id: `msg-${Date.now()}`,
+      sender: 'ai',
+      category: 'template',
+      timestamp,
+      text: `✨ **Optimización de Copy para Mensaje de Agradecimiento (Facturas):**\n\nHe preparado una versión con enfoque **${toneTitles[selectedTone]}**. Utiliza la fórmula de retención de clientes para incrementar la recurrencia de compra, manteniendo las variables dinámicas (\`{cliente}\`, \`{factura}\`, \`{totalUSD}\`, \`{fidelis}\`):\n\n\`\`\`\n${proposedTemplate}\n\`\`\`\n\n¿Deseas activar esta plantilla en todas las facturas y ventas del sistema?`,
+      actionProposal: {
+        id: `act-thank-${Date.now()}`,
+        type: 'update_thank_you_template',
+        title: `Aplicar Plantilla de Agradecimiento (${toneTitles[selectedTone]})`,
+        description: `Se enviará automáticamente a los clientes al emitir un ticket o compartir el comprobante por WhatsApp.`,
+        payload: {
+          newTemplate: proposedTemplate,
+          tone: selectedTone,
+        },
+        status: 'pending',
+      },
+    };
+  }
+
+  // 9. MANAGER COPY: Creación de Promociones, Combos y Copywriting Comercial
+  if (
+    q.includes('promo') ||
+    q.includes('promocion') ||
+    q.includes('combo') ||
+    q.includes('oferta') ||
+    q.includes('campana') ||
+    q.includes('publicidad') ||
+    q.includes('anuncio') ||
+    q.includes('copy') ||
+    q.includes('redactar') ||
+    q.includes('arepero') ||
+    q.includes('parrillero') ||
+    q.includes('marketing') ||
+    q.includes('descuento') ||
+    q.includes('propaganda') ||
+    q.includes('vender mas') ||
+    q.includes('estado de whatsapp')
+  ) {
+    // Generate specialized promotion
+    const newPromo = generateAICopyPromotion(q, context.products, context.settings);
+
+    let rationale = `🎯 **Estrategia Copywriting Aplicada:**\n`;
+    rationale += `• **Gancho Psicológico:** Utiliza el principio de apetito y tradición familiar venezolana (desayunos abundantes y frescura).\n`;
+    rationale += `• **Claridad Bimonetaria:** Presenta el monto tanto en $ USD como en Bolívares a Tasa Oficial BCV (${formatVES(context.settings.bcvRate)} Bs.) para máxima confianza y cero objeciones.\n`;
+    rationale += `• **Llamado a la Acción (CTA):** Enfoque de escasez natural ("hasta agotar el lote en mostrador") para acelerar la decisión de compra.\n`;
+
+    return {
+      id: `msg-${Date.now()}`,
+      sender: 'ai',
+      category: 'marketing',
+      timestamp,
+      text: `🔥 **¡Campaña Publicitaria Generada por tu Manager Copy Experta!**\n\nHe diseñado una promoción lista para compartir en grupos de WhatsApp, estados y redes sociales:\n\n━━━━━━━━━━━━━━━━━━━━\n${newPromo.bodyWhatsApp}\n━━━━━━━━━━━━━━━━━━━━\n\n📲 **Texto Corto para Estados de WhatsApp / Instagram Stories:**\n_${newPromo.shortSocialCopy}_\n\n${rationale}`,
+      structuredData: {
+        type: 'promotion_card',
+        promotion: newPromo,
+      },
+      actionProposal: {
+        id: `act-save-promo-${Date.now()}`,
+        type: 'save_promotion',
+        title: `Guardar "${newPromo.title}" en Campañas Activas`,
+        description: `Guardará esta promoción en la sección de Marketing para tenerla a mano y transmitirla en cualquier momento.`,
+        payload: { promotion: newPromo },
+        status: 'pending',
+      },
+    };
+  }
+
+  // 10. Respuesta Asistencial General y Multiuso
   return {
     id: `msg-${Date.now()}`,
     sender: 'ai',
     category: 'general',
     timestamp,
-    text: `Hola, soy tu **Copiloto de Inteligencia Artificial** con control y monitoreo total de **${context.settings.businessName}** 🤖🧀🥩\n\nPuedo responder preguntas y ejecutar tareas sobre cualquier parte del negocio:\n\n• 📈 **Demanda & Agotamiento:** *"¿Qué productos debo comprar esta semana?", "¿Cuáles se van a agotar primero?"*\n• 📊 **Finanzas & Ganancias:** *"Generar reporte de ventas de hoy", "¿Cuál es la utilidad neta de este mes?"*\n• 📋 **Libro de Fiados:** *"¿Quiénes me deben?", "Prepara el recordatorio para cobrar fiados"*\n• 📦 **Inventario & Stock:** *"¿Cuánto queda de queso paisa?", "Valorar inventario"* \n• ⚙️ **Parámetros Económicos:** *"Cambia la tasa BCV a 82.5", "Ajusta la tasa divisa a 85"*\n\n¿En qué te puedo ayudar hoy?`,
+    text: `Hola, soy tu **Copiloto de Inteligencia Artificial & Manager Copy Experta** de **${context.settings.businessName}** 🤖🧀🥩\n\nPuedo responder preguntas, redactar copies comerciales y ejecutar tareas sobre todo tu negocio:\n\n• 📢 **Manager Copy & Promociones:** *"Crea un combo arepero para este fin de semana", "Redacta una oferta relámpago de queso llanero", "Escribe un copy persuasivo para estados de WhatsApp"*\n• 💬 **Plantillas de WhatsApp:** *"Modifica el mensaje de recordatorio para que sea más cordial", "Cambia el mensaje de agradecimiento al estilo Fidelis VIP"*\n• 📈 **Demanda & Agotamiento:** *"¿Qué productos se van a agotar primero?", "¿Cuánto queso debemos comprar?"*\n• 📊 **Finanzas & Ganancias:** *"Generar reporte financiero de este mes", "¿Cuál es el margen operativo?"*\n• 📋 **Libro de Fiados:** *"¿Quiénes nos deben?", "Prepara el mensaje para cobrar fiados"*\n• ⚙️ **Parámetros Económicos:** *"Cambia la tasa BCV a 82.5", "Ajusta la tasa divisa a 85"*\n\n¿Qué campaña o gestión deseas poner en marcha hoy?`,
+  };
+}
+
+/**
+ * Generador Inteligente de Promociones y Copywriting para Charcutería
+ */
+export function generateAICopyPromotion(
+  query: string,
+  products: Product[],
+  settings: AppSettings,
+  options?: {
+    customType?: 'combo' | 'descuento' | 'oferta_relampago' | 'fin_de_semana' | 'fidelis' | 'tasa_especial';
+    targetProductId?: string;
+    customDiscountOrPrice?: string;
+    tone?: 'persuasivo' | 'familiar' | 'gourmet' | 'relampago';
+  }
+): MarketingPromotion {
+  const q = query.toLowerCase();
+  const bcv = settings.bcvRate || 1;
+  const now = new Date();
+
+  // Find relevant products
+  const queso = products.find((p) => p.name.toLowerCase().includes('llanero') || p.category === 'Quesos') || products[0];
+  const jamon = products.find((p) => p.name.toLowerCase().includes('jamón') || p.name.toLowerCase().includes('plumrose')) || products[1];
+  const harina = products.find((p) => p.name.toLowerCase().includes('harina')) || products[3] || products[0];
+  const tocineta = products.find((p) => p.name.toLowerCase().includes('tocineta') || p.name.toLowerCase().includes('salchichón')) || products[2];
+
+  // 1. Combo Arepero / Desayuno Familiar
+  if (options?.customType === 'combo' || q.includes('areper') || q.includes('desayuno') || q.includes('combo')) {
+    const priceUSD = 8.50;
+    const priceVES = priceUSD * bcv;
+    return {
+      id: `promo-${Date.now()}`,
+      title: `Combo Arepero Familiar (${queso.name} + ${jamon.name} + ${harina.name})`,
+      category: 'combo',
+      headline: `🔥 ¡DESAYUNO EN FAMILIA CON TODO! COMBO AREPERO IRRESISTIBLE 🧀🥩`,
+      estimatedPriceUSD: priceUSD,
+      discountOrPrice: `$${priceUSD.toFixed(2)} USD (~${formatVES(priceVES)} Bs.)`,
+      targetAudience: 'Familias, desayunos de fin de semana y amantes de la arepa',
+      validUntil: 'Hasta agotar existencia del lote',
+      suggestedProducts: [queso.name, jamon.name, harina.name],
+      bodyWhatsApp: `🔥 *¡COMBO AREPERO FAMILIAR EN ${settings.businessName.toUpperCase()}!* 🧀🥩🇻🇪
+
+¿Te provoca un desayuno abundante, fresco y que rinda para toda la familia? Te armamos el combo más sabroso y económico de la zona:
+
+📦 *EL COMBO AREPERO INCLUYE:*
+• 🧀 *1/2 KG ${queso.name}* (punto ideal de sal, suave y perfecto para rallar)
+• 🥩 *300g ${jamon.name}* (en lonjitas recién cortadas)
+• 🌽 *1 Paquete ${harina.name}*
+
+━━━━━━━━━━━━━━━━━━━━
+💰 *PRECIO ESPECIAL DEL COMBO:*
+👉 *Solo $${priceUSD.toFixed(2)} USD* (~${formatVES(priceVES)} Bs. Tasa BCV)
+_(Ahorras comprando el combo completo)_
+━━━━━━━━━━━━━━━━━━━━
+
+🛵 *Aparta el tuyo antes de que se agote:*
+📍 Visítanos en: ${settings.address}
+📲 Escríbenos directamente a este WhatsApp para tener tu pedido listo en mostrador.
+
+¡Te esperamos con la mejor atención y calidad de siempre! ✨❤️`,
+      shortSocialCopy: `🧀🥩 ¡COMBO AREPERO EN PROMO! 1/2 kg ${queso.name} + 300g ${jamon.name} + ${harina.name} por solo $${priceUSD.toFixed(2)} en ${settings.businessName}. ¡Pide el tuyo por WhatsApp! 📲`,
+      createdAt: now.toISOString(),
+      isActive: true,
+    };
+  }
+
+  // 2. Parrilla / Fin de Semana / Compartir
+  if (options?.customType === 'fin_de_semana' || q.includes('parrilla') || q.includes('finde') || q.includes('fin de semana') || q.includes('picadera')) {
+    const priceUSD = 11.90;
+    const priceVES = priceUSD * bcv;
+    return {
+      id: `promo-${Date.now()}`,
+      title: `Combo Picadera & Parrilla (${tocineta.name} + Embutidos Especiales)`,
+      category: 'fin_de_semana',
+      headline: `🥓🍻 ¿PLAN DE FIN DE SEMANA? ¡TENEMOS LA MEJOR PICADERA CHARCUTERA! 🧀`,
+      estimatedPriceUSD: priceUSD,
+      discountOrPrice: `$${priceUSD.toFixed(2)} USD (~${formatVES(priceVES)} Bs.)`,
+      targetAudience: 'Reuniones de amigos, parrilladas y picaderas de fin de semana',
+      validUntil: 'Válido viernes, sábado y domingo',
+      suggestedProducts: [tocineta.name, queso.name],
+      bodyWhatsApp: `🥓🍻 *¿PLAN DE PARRILLA O COMPARTIR FAMILIAR?* 🧀🥩
+
+Este fin de semana en *${settings.businessName}* te tenemos la picadera perfecta para acompañar tus bebidas y compartir con los tuyos:
+
+🍢 *EL PACK PICADERA INCLUYE:*
+• 🥓 *250g ${tocineta.name}* (ahumadita y lista para dorar crujiente)
+• 🌭 *350g Embutidos y Salchichas Especiales*
+• 🧀 *250g Queso Amarillo o Gouda* en cubos perfectos
+
+━━━━━━━━━━━━━━━━━━━━
+💰 *PRECIO ESPECIAL DE FIN DE SEMANA:*
+👉 *Solo $${priceUSD.toFixed(2)} USD* (~${formatVES(priceVES)} Bs. BCV)
+━━━━━━━━━━━━━━━━━━━━
+
+📍 Búscalo en: ${settings.address}
+📲 Envíanos un mensaje para reservar tu picada antes de que se agote. ¡Sabor insuperable garantizado! ✨🍺`,
+      shortSocialCopy: `🥓🍻 ¡La mejor picadera charcutera para tu fin de semana por solo $${priceUSD.toFixed(2)} en ${settings.businessName}! Haz tu pedido al WhatsApp. 🧀`,
+      createdAt: now.toISOString(),
+      isActive: true,
+    };
+  }
+
+  // 3. Oferta Relámpago en Queso o Producto Específico
+  const targetProduct = options?.targetProductId
+    ? products.find((p) => p.id === options.targetProductId) || queso
+    : queso;
+
+  const originalPrice = targetProduct.priceUSD;
+  const promoPriceUSD = Math.round(originalPrice * 0.88 * 100) / 100;
+  const promoPriceVES = promoPriceUSD * bcv;
+
+  return {
+    id: `promo-${Date.now()}`,
+    title: `Oferta Relámpago: ${targetProduct.name} al Mejor Precio`,
+    category: 'oferta_relampago',
+    headline: `⚡ ¡OFERTA RELÁMPAGO EN ${targetProduct.name.toUpperCase()}! 🧀✨`,
+    estimatedPriceUSD: promoPriceUSD,
+    discountOrPrice: `$${promoPriceUSD.toFixed(2)} / ${targetProduct.unit} (Antes $${originalPrice.toFixed(2)})`,
+    targetAudience: 'Clientes del sector y compradores habituales',
+    validUntil: 'Válido por 48 horas o hasta agotar stock',
+    suggestedProducts: [targetProduct.name],
+    bodyWhatsApp: `⚡ *¡OFERTA RELÁMPAGO: ${targetProduct.name.toUpperCase()} FRESQUITO!* 🧀✨
+
+Acaba de llegar lote especial a *${settings.businessName}* con la máxima frescura, textura ideal y el punto exacto de sabor que buscas:
+
+━━━━━━━━━━━━━━━━━━━━
+🔥 *PRECIO ESPECIAL REBAJADO:*
+👉 *Solo $${promoPriceUSD.toFixed(2)} USD por ${targetProduct.unit}* (Precio regular: $${originalPrice.toFixed(2)})
+🇻🇪 *Equivalente en Bolívares:* ~${formatVES(promoPriceVES)} Bs. a Tasa Oficial BCV
+━━━━━━━━━━━━━━━━━━━━
+
+🚨 *Atención:* Válido únicamente hasta agotar la existencia en mostrador.
+📍 Visítanos en: ${settings.address}
+📲 ¿Quieres que te lo apartemos rebanado o entero? ¡Respóndenos a este mensaje de inmediato! 🛵✨`,
+    shortSocialCopy: `⚡ ¡REBAJA RELÁMPAGO! ${targetProduct.name} a $${promoPriceUSD.toFixed(2)}/${targetProduct.unit} en ${settings.businessName}. ¡Aprovecha hoy mismo! 🧀📲`,
+    createdAt: now.toISOString(),
+    isActive: true,
   };
 }

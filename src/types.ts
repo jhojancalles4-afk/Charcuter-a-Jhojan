@@ -80,6 +80,22 @@ export interface PagoMovilConfig {
   cedula: string;
 }
 
+export interface MarketingPromotion {
+  id: string;
+  title: string;
+  category: 'combo' | 'descuento' | 'oferta_relampago' | 'fin_de_semana' | 'fidelis' | 'tasa_especial' | 'personalizado';
+  headline: string;
+  bodyWhatsApp: string;
+  shortSocialCopy: string;
+  targetAudience: string;
+  validUntil?: string;
+  estimatedPriceUSD?: number;
+  discountOrPrice?: string;
+  suggestedProducts?: string[];
+  createdAt: string;
+  isActive: boolean;
+}
+
 export interface AppSettings {
   businessName: string;
   rif: string;
@@ -94,6 +110,16 @@ export interface AppSettings {
   autoSyncCloud: boolean;
   lastCloudSync?: string;
   telegramPhone?: string;
+
+  // Expert Manager Copy & Message Customization
+  customThankYouTemplate?: string;
+  customReminderTemplate?: string;
+  thankYouTone?: 'calido' | 'dinamico' | 'fidelis' | 'gourmet';
+  reminderTone?: 'cordial' | 'asertivo' | 'urgente' | 'efectivo';
+  promotions?: MarketingPromotion[];
+
+  // Total AI Control System
+  aiAutonomousMode?: boolean; // When true, AI executes approved operational orders directly
 }
 
 export interface DebtorCustomer {

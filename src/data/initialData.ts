@@ -42,6 +42,122 @@ export const INITIAL_SETTINGS: AppSettings = {
   autoSyncCloud: true,
   lastCloudSync: new Date().toISOString(),
   telegramPhone: '0414-7281945',
+  thankYouTone: 'calido',
+  reminderTone: 'cordial',
+  promotions: [
+    {
+      id: 'promo-1',
+      title: 'Combo Arepero Familiar (Queso Llanero + Jamón Plumrose + Harina PAN)',
+      category: 'combo',
+      headline: '🔥 ¡DESAYUNA COMO REY! COMBO AREPERO FAMILIAR 🧀🥩',
+      estimatedPriceUSD: 8.50,
+      discountOrPrice: '$8.50 (~Bs. 667.25 BCV)',
+      targetAudience: 'Familias y desayunos de fin de semana',
+      validUntil: 'Hasta agotar existencia del lote',
+      suggestedProducts: ['Queso Blanco Llanero Duro', 'Jamón Cocido Superior Plumrose', 'Harina PAN Maíz Blanco 1KG'],
+      bodyWhatsApp: `🔥 *¡COMBO AREPERO FAMILIAR EN CHARCUTERÍA JHOJAN!* 🧀🥩🇻🇪
+
+¿Listo para el desayuno más sabroso y rendidor de toda la semana? En *Charcutería Jhojan* te preparamos el combo perfecto para consentir a los tuyos:
+
+📦 *EL COMBO INCLUYE:*
+• 🧀 *1/2 KG Queso Blanco Llanero Duro* (punto exacto de sal, recién rallado)
+• 🥩 *300g Jamón Cocido Superior Plumrose* (en lonjitas finas y tiernas)
+• 🌽 *1 Paquete Harina PAN de 1KG*
+
+━━━━━━━━━━━━━━━━━━━━
+💰 *PRECIO ESPECIAL DEL COMBO:*
+👉 *Solo $8.50 USD* (~667.25 Bs. Tasa BCV)
+_(Ahorras más del 15% comprando el combo completo)_
+━━━━━━━━━━━━━━━━━━━━
+
+🛵 *Pide el tuyo antes de que se agote:*
+📍 Visítanos: Av. Bolívar, Local 4, Centro
+📲 Escríbenos directamente a este WhatsApp para apartar tu pedido.
+
+¡Te esperamos con la frescura y la sonrisa de siempre! ✨❤️`,
+      shortSocialCopy: `🧀🥩 ¡COMBO AREPERO EN PROMO! 1/2 kg Queso Llanero + 300g Jamón Plumrose + Harina PAN por solo $8.50 en Charcutería Jhojan. ¡Pide el tuyo hoy! 📲`,
+      createdAt: new Date().toISOString(),
+      isActive: true,
+    },
+    {
+      id: 'promo-2',
+      title: 'Oferta Relámpago: Queso Blanco Llanero Fresco',
+      category: 'oferta_relampago',
+      headline: '⚡ ¡OFERTA RELÁMPAGO! QUESO LLANERO FRESCO A PRECIO IMBATIBLE 🧀',
+      estimatedPriceUSD: 4.90,
+      discountOrPrice: '$4.90/KG (Antes $5.50)',
+      targetAudience: 'Clientes frecuentes y amantes del buen queso',
+      validUntil: 'Válido por 48 horas',
+      suggestedProducts: ['Queso Blanco Llanero Duro'],
+      bodyWhatsApp: `⚡ *¡OFERTA RELÁMPAGO: QUESO BLANCO LLANERO DE PRIMERA!* 🧀✨
+
+Acaba de llegar queso llanero fresquito a *Charcutería Jhojan*, con el punto ideal de sal, consistencia perfecta para rallar y sabor insuperable.
+
+━━━━━━━━━━━━━━━━━━━━
+🔥 *PRECIO ESPECIAL POR ESTE FIN DE SEMANA:*
+👉 *Solo $4.90 USD el Kilo* (Precio regular: $5.50)
+🇻🇪 *Equivalente:* ~384.65 Bs. a Tasa Oficial BCV
+━━━━━━━━━━━━━━━━━━━━
+
+🚨 *Válido únicamente hasta agotar la pieza de 25 KG en mostrador.*
+📍 *Charcutería Jhojan C.A.* • Av. Bolívar, Local 4, Centro.
+¡Ven a probarlo o apártalo por aquí mismo antes de que se termine! 🛵✨`,
+      shortSocialCopy: `⚡ ¡REBAJA RELÁMPAGO! Queso Llanero a $4.90/KG este fin de semana en Charcutería Jhojan. ¡Aprovecha antes de que se agote la pieza! 🧀`,
+      createdAt: new Date().toISOString(),
+      isActive: true,
+    },
+    {
+      id: 'promo-3',
+      title: 'Combo Picadera & Parrilla (Tocineta Ahumada + Salchichón + Queso Amarillo)',
+      category: 'fin_de_semana',
+      headline: '🥓🍻 ¿PLAN DE FIN DE SEMANA? ¡TENEMOS LA MEJOR PICADERA! 🧀',
+      estimatedPriceUSD: 11.90,
+      discountOrPrice: '$11.90 Combo Picada',
+      targetAudience: 'Reuniones, parrilladas y picaderas entre amigos',
+      validUntil: 'Fin de semana',
+      suggestedProducts: ['Tocineta Ahumada Especial', 'Salchichón Criollo / Salchicha Frankfurt', 'Queso Amarillo Tipo Gouda Holandés'],
+      bodyWhatsApp: `🥓🍻 *¿PLAN DE PARRILLA O COMPARTIR FAMILIAR?* 🧀🥩
+
+Este fin de semana se celebra en casa con la mejor picadera charcutera de la ciudad:
+
+🍢 *EL COMBO PICADERA INCLUYE:*
+• 🥓 *250g Tocineta Ahumada Especial* (para dorar crocante)
+• 🌭 *300g Salchichón Criollo / Salchicha Frankfurt*
+• 🧀 *250g Queso Amarillo Tipo Gouda* (en cubos perfectos)
+
+━━━━━━━━━━━━━━━━━━━━
+💰 *PRECIO ESPECIAL PARRILLERO:*
+👉 *Solo $11.90 USD* (~934.15 Bs. BCV)
+━━━━━━━━━━━━━━━━━━━━
+
+📍 Búscalo en *Charcutería Jhojan* (Av. Bolívar, Centro) o pide por WhatsApp para tenerlo listo al llegar. ¡Calidad garantizada en cada bocado! ✨🍺`,
+      shortSocialCopy: `🥓🍻 ¡Picadera lista para el finde! Tocineta + Salchichón + Queso Amarillo por $11.90 en Charcutería Jhojan. ¡Haz tu pedido ya! 🧀`,
+      createdAt: new Date().toISOString(),
+      isActive: true,
+    },
+    {
+      id: 'promo-4',
+      title: 'Incentivo Pago en Dólares Efectivo a Tasa Preferencial',
+      category: 'tasa_especial',
+      headline: '💵 ¡TUS DÓLARES EN EFECTIVO RINDEN MÁS EN CHARCUTERÍA JHOJAN! 🌟',
+      discountOrPrice: 'Tasa Preferencial Bs. 82.00',
+      targetAudience: 'Clientes con divisas en efectivo',
+      bodyWhatsApp: `💵 *¡TUS DÓLARES EN EFECTIVO VALEN MÁS CON NOSOTROS!* 🌟🥩🧀
+
+En *Charcutería Jhojan C.A.* premiamos tu pago al contado con nuestra **Tasa Especial Preferencial**:
+
+━━━━━━━━━━━━━━━━━━━━
+💵 *TASA PREFERENCIAL EN EFECTIVO:*
+👉 *Bs. 82.00 por cada $ USD* (BCV Oficial: Bs. 78.50)
+━━━━━━━━━━━━━━━━━━━━
+✨ Más mercancía, más queso y más embutidos por tus mismos billetes.
+
+📍 Te esperamos hoy en Av. Bolívar, Local 4, Centro. ¡Ven y comprueba el verdadero rendimiento de tu dinero! 🛍️🧀`,
+      shortSocialCopy: `💵 ¡Tus dólares en efectivo valen más! Paga a tasa preferencial en Charcutería Jhojan y lleva más por menos. ¡Te esperamos! 🧀✨`,
+      createdAt: new Date().toISOString(),
+      isActive: true,
+    },
+  ],
 };
 
 export const INITIAL_PRODUCTS: Product[] = [

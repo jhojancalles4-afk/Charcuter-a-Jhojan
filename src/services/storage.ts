@@ -56,6 +56,11 @@ export function loadSettings(): AppSettings {
       ...INITIAL_SETTINGS,
       ...parsed,
       preferentialRate: parsed.preferentialRate || INITIAL_SETTINGS.preferentialRate || 82.00,
+      customThankYouTemplate: parsed.customThankYouTemplate !== undefined ? parsed.customThankYouTemplate : INITIAL_SETTINGS.customThankYouTemplate,
+      customReminderTemplate: parsed.customReminderTemplate !== undefined ? parsed.customReminderTemplate : INITIAL_SETTINGS.customReminderTemplate,
+      thankYouTone: parsed.thankYouTone || INITIAL_SETTINGS.thankYouTone || 'calido',
+      reminderTone: parsed.reminderTone || INITIAL_SETTINGS.reminderTone || 'cordial',
+      promotions: Array.isArray(parsed.promotions) ? parsed.promotions : (INITIAL_SETTINGS.promotions || []),
     };
   } catch (e) {
     console.error('Error loading settings from localStorage', e);
@@ -833,6 +838,140 @@ export function getDebtorsSummary(tickets: SaleTicket[], bcvRate: number): Debto
   return Array.from(map.values()).sort((a, b) => b.totalDebtUSD - a.totalDebtUSD);
 }
 
+// --- Templates Predeterminados y Presets de Tono para WhatsApp ---
+export const DEFAULT_THANK_YOU_TEMPLATE = `✨ *¡Hola, {cliente}!* 🧀🥩
+
+En *{negocio}* queremos darte las gracias de todo corazón por tu compra y por preferirnos para llevar calidad, sabor y frescura a tu hogar. ¡Nos alegra muchísimo atenderte! 🥰🙏
+
+━━━━━━━━━━━━━━━━━━━━
+🧾 *COMPROBANTE DE COMPRA - TICKET #{factura}*
+📅 *Fecha:* {fecha}
+👤 *Cliente:* {cliente}
+💰 *TOTAL DE LA COMPRA:* *{totalUSD}* (~{totalVES})
+💳 *Modalidad de Pago:* {metodoPago}
+{estado}
+━━━━━━━━━━━━━━━━━━━━{fidelis}
+📎 *Nota importante:* Te adjuntamos aquí en la conversación tu *Factura Digital en imagen (PNG)* detallada con cada producto adquirido, para que la guardes o imprimas en tu impresora térmica. 
+
+¡Fue un inmenso placer atenderte! Te esperamos pronto de vuelta con la atención y la sonrisa de siempre. 🥖🥛🥓
+
+¡Que disfrutes mucho tu compra y que tengas un excelente y bendecido día! ✨❤️`;
+
+export const THANK_YOU_TONE_PRESETS = {
+  calido: DEFAULT_THANK_YOU_TEMPLATE,
+  dinamico: `🧾 *COMPROBANTE DE COMPRA - {negocio}*
+¡Gracias por tu compra, {cliente}! 🥩🧀
+
+Ticket #{factura} | Fecha: {fecha}
+Total: *{totalUSD}* (~{totalVES})
+Pago: {metodoPago} | {estado}
+{fidelis}
+📎 Adjuntamos tu factura digital. ¡Esperamos verte pronto de nuevo! ✨🥖`,
+  fidelis: `🎁 *¡GRACIAS POR TU VISITA EN {negocio}!* ⭐
+Hola {cliente}, ¡nos llena de alegría atenderte! 🧀🥩
+
+🧾 Ticket #{factura} • Fecha: {fecha}
+💰 Total: *{totalUSD}* (~{totalVES})
+💳 Método: {metodoPago} • {estado}
+{fidelis}
+🎯 *¡Recuerda que cada compra te acerca a premios exclusivos Fidelis!* Pregúntanos por tus sellos acumulados en tu próxima visita.
+
+📎 Adjuntamos tu comprobante digital. ¡Feliz y bendecido día! ✨🙏`,
+  gourmet: `🍷🧀 *CHARCUTERÍA & DELI {negocio}*
+*Calidad, Tradición y Sabor Superior en tu Hogar*
+
+Apreciado(a) {cliente}, gracias por preferir nuestra cuidada selección de quesos, embutidos y productos frescos de primera categoría.
+
+━━━━━━━━━━━━━━━━━━━━
+🧾 *Ticket #{factura}* • {fecha}
+💰 Total Cancelado: *{totalUSD}* (~{totalVES})
+💳 Modalidad: {metodoPago}
+{estado}
+{fidelis}
+━━━━━━━━━━━━━━━━━━━━
+📎 Le adjuntamos su comprobante digital en alta definición. ¡Será un inmenso gusto deleitar su paladar nuevamente muy pronto! 🥖🥩✨`,
+};
+
+export const DEFAULT_REMINDER_TEMPLATE = `👋 *Estimado(a) {cliente}*, ¡esperamos que se encuentre muy bien! Le enviamos un cordial saludo de parte de *{negocio}* 🧀🥩
+
+Nos comunicamos de manera muy atenta para recordarle cordialmente el estado de su cuenta de compras a crédito en nuestro local:
+
+📋 *DETALLE DE COMPRAS PENDIENTES:*
+{comprasPendientes}
+
+━━━━━━━━━━━━━━━━━━━━
+💵 *SALDO TOTAL PENDIENTE A CANCELAR:*
+👉 *{totalUSD}* (~{totalVES})
+━━━━━━━━━━━━━━━━━━━━
+
+Le recordamos amablemente que puede realizar el pago de su saldo en divisa en efectivo ($ USD) directamente en nuestra tienda o a través de nuestros canales oficiales:
+{pagoMovil}
+
+Si ya realizó algún abono o pago recientemente, le agradecemos enviarnos el comprobante por este mismo chat de WhatsApp para actualizar de inmediato su cuenta y registrar su saldo.
+
+¡Agradecemos inmensamente su confianza, preferencia y fidelidad con nosotros! Le deseamos un feliz y bendecido día. ✨😊`;
+
+export const REMINDER_TONE_PRESETS = {
+  cordial: DEFAULT_REMINDER_TEMPLATE,
+  asertivo: `📋 *ESTADO DE CUENTA Y SALDO PENDIENTE - {negocio}*
+Estimado(a) {cliente}, un cordial saludo comercial.
+
+Le hacemos llegar el detalle de sus facturas pendientes en nuestro libro de fiados al día de hoy:
+
+{comprasPendientes}
+
+━━━━━━━━━━━━━━━━━━━━
+💰 *SALDO TOTAL VENCIDO:* *{totalUSD}* (~{totalVES})
+━━━━━━━━━━━━━━━━━━━━
+
+Canales habilitados para liquidar:
+{pagoMovil}
+O directamente en divisa en efectivo en nuestra caja.
+
+Agradecemos enviarnos su captura de pago al realizar la transacción para conciliar su cuenta. ¡Muchas gracias por su compromiso y preferencia! 🤝`,
+  urgente: `⏰ *RECORDATORIO PRIORITARIO DE PAGO - {negocio}*
+Hola {cliente}, esperamos te encuentres bien.
+
+Nos comunicamos para recordarte que mantienes cuentas de crédito pendientes que requieren regularización:
+
+{comprasPendientes}
+
+🚨 *TOTAL PENDIENTE POR LIQUIDAR:* *{totalUSD}* (~{totalVES})
+
+Te agradecemos pasar por nuestra tienda o realizar tu Pago Móvil a la brevedad:
+{pagoMovil}
+
+Mantener tu saldo al día te permite continuar disfrutando de tu línea de crédito y la confianza de siempre en nuestra charcutería. ¡Agradecemos tu valiosa atención y quedamos a la espera de tu comprobante! 🙏✨`,
+  efectivo: `💵 *RECORDATORIO CON BENEFICIO DE PAGO EN EFECTIVO - {negocio}*
+Estimado(a) {cliente}, ¡saludos cordiales!
+
+Le informamos sobre su saldo pendiente en nuestro libro de fiados:
+{comprasPendientes}
+
+👉 *Monto Total a Cancelar:* *{totalUSD}* (~{totalVES})
+
+💡 *BENEFICIO EXCLUSIVO:* Si abona o liquida su saldo en divisa en efectivo ($ USD) en nuestra tienda, recibe atención inmediata y aprovecha nuestras mejores condiciones comerciales.
+También puede abonar por Pago Móvil:
+{pagoMovil}
+
+¡Agradecemos inmensamente su lealtad con nosotros! Le esperamos en *{negocio}*. 🧀🥩✨`,
+};
+
+/**
+ * Interpola variables dinámicas en plantillas de WhatsApp
+ */
+export function interpolateMessageTemplate(
+  template: string,
+  variables: Record<string, string>
+): string {
+  let output = template;
+  for (const [key, val] of Object.entries(variables)) {
+    const regex = new RegExp(`\\{${key}\\}`, 'gi');
+    output = output.replace(regex, val ?? '');
+  }
+  return output;
+}
+
 // --- WhatsApp Customer Purchase Thank-You Generator with Attached Invoice Notice ---
 export function generateWhatsAppThankYou(
   ticket: SaleTicket,
@@ -891,23 +1030,34 @@ export function generateWhatsAppThankYou(
 ${fidelisCustomer.stampsCount >= 10 ? '🎁 ¡Tienes un premio por 10 sellos disponible para canjear!\n' : ''}${fidelisCustomer.highValueCount >= 4 ? '👑 ¡Tienes un premio VIP Fidelis Oro disponible para canjear!\n' : ''}━━━━━━━━━━━━━━━━━━━━\n`;
   }
 
-  const message = `✨ *¡Hola, ${firstName}!* 🧀🥩
+  const pagoMovilText = `📱 Banco: ${settings.pagoMovil.bankName} (${settings.pagoMovil.bankCode})\n📱 Teléfono: ${settings.pagoMovil.phone}\n🆔 C.I./RIF: ${settings.pagoMovil.cedula}`;
 
-En *${settings.businessName}* queremos darte las gracias de todo corazón por tu compra y por preferirnos para llevar calidad, sabor y frescura a tu hogar. ¡Nos alegra muchísimo atenderte! 🥰🙏
+  const templateToUse = settings.customThankYouTemplate && settings.customThankYouTemplate.trim().length > 10
+    ? settings.customThankYouTemplate
+    : DEFAULT_THANK_YOU_TEMPLATE;
 
-━━━━━━━━━━━━━━━━━━━━
-🧾 *COMPROBANTE DE COMPRA - TICKET #${ticket.ticketNumber}*
-📅 *Fecha:* ${dateStr}
-👤 *Cliente:* ${ticket.customerName}
-💰 *TOTAL DE LA COMPRA:* *${formatUSD(ticket.totalUSD)} USD* (~${formatVES(ticket.totalVES)})
-💳 *Modalidad de Pago:* ${paymentText}
-${isFiado ? `⚠️ *Saldo Pendiente:* ${formatUSD(ticket.pendingUSD)} (~${formatVES(ticket.pendingVES)})` : '✅ *Estado:* Totalmente Cancelado'}
-━━━━━━━━━━━━━━━━━━━━${fidelisLoyaltyText}
-📎 *Nota importante:* Te adjuntamos aquí en la conversación tu *Factura Digital en imagen (PNG)* detallada con cada producto adquirido, para que la guardes o imprimas en tu impresora térmica. 
+  const variables: Record<string, string> = {
+    cliente: firstName,
+    customerName: firstName,
+    negocio: settings.businessName,
+    businessName: settings.businessName,
+    factura: ticket.ticketNumber.toString(),
+    ticketNumber: ticket.ticketNumber.toString(),
+    fecha: dateStr,
+    date: dateStr,
+    totalUSD: formatUSD(ticket.totalUSD),
+    totalVES: formatVES(ticket.totalVES),
+    metodoPago: paymentText,
+    paymentMethod: paymentText,
+    estado: isFiado ? `⚠️ *Saldo Pendiente:* ${formatUSD(ticket.pendingUSD)} (~${formatVES(ticket.pendingVES)})` : '✅ *Estado:* Totalmente Cancelado',
+    saldoPendiente: formatUSD(ticket.pendingUSD),
+    fidelis: fidelisLoyaltyText,
+    telefono: settings.phone,
+    direccion: settings.address,
+    pagoMovil: pagoMovilText,
+  };
 
-¡Fue un inmenso placer atenderte! Te esperamos pronto de vuelta con la atención y la sonrisa de siempre. 🥖🥛🥓
-
-¡Que disfrutes mucho tu compra y que tengas un excelente y bendecido día! ✨❤️`;
+  const message = interpolateMessageTemplate(templateToUse, variables);
 
   const url = cleanPhone
     ? `https://wa.me/${cleanPhone}?text=${encodeURIComponent(message)}`
@@ -923,6 +1073,7 @@ export function generateWhatsAppReminder(
 ): { url: string; message: string } {
   const cleanPhone = sanitizePhoneForWhatsApp(debtor.phone);
   const totalUSD = debtor.totalDebtUSD;
+  const bcv = settings.bcvRate || 1;
 
   // Format date helper
   const formatDate = (iso: string) => {
@@ -947,24 +1098,32 @@ export function generateWhatsAppReminder(
     })
     .join('\n\n');
 
-  // Friendly, cordial and clear WhatsApp reminder strictly in USD currency
-  const message = `👋 *Estimado(a) ${debtor.name}*, ¡esperamos que se encuentre muy bien! Le enviamos un cordial saludo de parte de *${settings.businessName}* 🧀🥩
+  const pagoMovilText = `📱 *Pago Móvil Oficial:*
+• Banco: ${settings.pagoMovil.bankName} (${settings.pagoMovil.bankCode})
+• Teléfono: ${settings.pagoMovil.phone}
+• C.I./RIF: ${settings.pagoMovil.cedula}
+• Tasa BCV Oficial: ${formatVES(bcv)} Bs./USD`;
 
-Nos comunicamos de manera muy atenta para recordarle cordialmente el estado de su cuenta de compras a crédito en nuestro local:
+  const templateToUse = settings.customReminderTemplate && settings.customReminderTemplate.trim().length > 10
+    ? settings.customReminderTemplate
+    : DEFAULT_REMINDER_TEMPLATE;
 
-📋 *DETALLE DE COMPRAS PENDIENTES:*
-${purchasesLines}
+  const variables: Record<string, string> = {
+    cliente: debtor.name,
+    debtorName: debtor.name,
+    negocio: settings.businessName,
+    businessName: settings.businessName,
+    totalUSD: formatUSD(totalUSD),
+    totalVES: formatVES(totalUSD * bcv),
+    comprasPendientes: purchasesLines,
+    purchasesDetail: purchasesLines,
+    pagoMovil: pagoMovilText,
+    datosPago: pagoMovilText,
+    telefono: settings.phone,
+    direccion: settings.address,
+  };
 
-━━━━━━━━━━━━━━━━━━━━
-💵 *SALDO TOTAL PENDIENTE A CANCELAR:*
-👉 *${formatUSD(totalUSD)} USD*
-━━━━━━━━━━━━━━━━━━━━
-
-Le recordamos amablemente que puede realizar el pago de su saldo en divisa en efectivo ($ USD) directamente en nuestra tienda o a través de los medios previamente convenidos.
-
-Si ya realizó algún abono o pago recientemente, le agradecemos enviarnos el comprobante por este mismo chat de WhatsApp para actualizar de inmediato su cuenta y registrar su saldo.
-
-¡Agradecemos inmensamente su confianza, preferencia y fidelidad con nosotros! Le deseamos un feliz y bendecido día. ✨😊`;
+  const message = interpolateMessageTemplate(templateToUse, variables);
 
   const url = cleanPhone
     ? `https://wa.me/${cleanPhone}?text=${encodeURIComponent(message)}`

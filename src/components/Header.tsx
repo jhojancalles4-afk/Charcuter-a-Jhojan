@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Store,
   ShoppingCart,
@@ -60,6 +60,14 @@ export const Header: React.FC<HeaderProps> = ({
   const [tempPrefRate, setTempPrefRate] = useState(
     (settings.preferentialRate || settings.bcvRate).toString()
   );
+
+  useEffect(() => {
+    setTempRate(settings.bcvRate.toString());
+  }, [settings.bcvRate]);
+
+  useEffect(() => {
+    setTempPrefRate((settings.preferentialRate || settings.bcvRate).toString());
+  }, [settings.preferentialRate, settings.bcvRate]);
 
   const handleSaveRate = (e: React.FormEvent) => {
     e.preventDefault();
@@ -367,7 +375,10 @@ export const Header: React.FC<HeaderProps> = ({
             }`}
           >
             <Sparkles className="w-4 h-4 text-purple-400" />
-            <span>Copiloto IA</span>
+            <span>Copiloto IA (Control Total)</span>
+            <span className={`text-[10px] font-mono px-1.5 py-0.2 rounded-md ${settings.aiAutonomousMode ? 'bg-amber-400 text-slate-950 font-black' : 'bg-purple-950 text-purple-300 border border-purple-800'}`}>
+              {settings.aiAutonomousMode ? '⚡ AUTO' : '🛡️ ASIST'}
+            </span>
           </button>
 
           <button

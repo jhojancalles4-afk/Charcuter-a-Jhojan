@@ -33,11 +33,14 @@ import { RestockModule } from './components/RestockModule';
 import { InventoryModule } from './components/InventoryModule';
 import { SettingsModule } from './components/SettingsModule';
 import { AIControlModule } from './components/AIControlModule';
+import { GlobalAICopilot } from './components/GlobalAICopilot';
 import { FidelisDirectoryModal } from './components/FidelisDirectoryModal';
 import { GoogleBackupModal } from './components/GoogleBackupModal';
 import { MermaAdjustmentModal } from './components/MermaAdjustmentModal';
 import { CheckCircle, AlertCircle } from 'lucide-react';
 import { voidOrDeleteTicket } from './services/storage';
+import { AIActionProposal } from './services/aiAssistantEngine';
+import { playSuccessChime } from './utils/audioFeedback';
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<
@@ -390,6 +393,183 @@ export default function App() {
     setTimeout(() => setToastMessage(null), 3500);
   };
 
+  // Central Dispatcher for Total AI Control Actions
+  const handleExecuteAIAction = useCallback(
+    (proposal: AIActionProposal) => {
+      try {
+        if (proposal.type === 'set_bcv_rate') {
+          handleUpdateBcvRate(proposal.payload.newRate);
+        } else if (proposal.type === 'set_pref_rate') {
+          handleUpdatePreferentialRate(proposal.payload.newRate);
+        } else if (proposal.type === 'toggle_autonomous_mode') {
+          handleSaveSettings({ ...settings, aiAutonomousMode: proposal.payload.enabled });
+          playSuccessChime();
+          showToast(proposal.payload.enabled ? '⚡ Modo Autónomo ACTIVADO: Ejecución directa' : '🛡️ Modo Asistido ACTIVADO');
+        } else if (proposal.type === 'create_product') {
+          const rawUnit = proposal.payload.unit;
+          const validUnit = (rawUnit === 'UN' || rawUnit === 'unid') ? 'UN' : 'KG';
+          const validCategory = ['Quesos', 'Embutidos', 'Lácteos', 'Varios'].includes(proposal.payload.category)
+            ? proposal.payload.category
+            : 'Embutidos';
+
+          const newProduct: Product = {
+            id: `prod-${Date.now()}`,
+            name: proposal.payload.name,
+            priceUSD: proposal.payload.priceUSD,
+            costUSD: proposal.payload.costUSD || Math.round(proposal.payload.priceUSD * 0.72 * 100) / 100,
+            stock: proposal.payload.stock || 0,
+            unit: validUnit,
+            category: validCategory,
+            emoji: validCategory === 'Quesos' ? '🧀' : validCategory === 'Lácteos' ? '🥛' : '🥓',
+            minStockAlert: 2,
+          };
+          handleUpdateProducts([newProduct, ...products]);
+          playSuccessChime();
+          showToast(`✅ Producto "${newProduct.name}" creado con ${newProduct.stock} ${newProduct.unit}.`);
+        } else if (proposal.type === 'update_product_price') {
+          const nextProducts = products.map((p) =>
+            p.id === proposal.payload.productId ? { ...p, priceUSD: proposal.payload.newPriceUSD } : p
+          );
+          handleUpdateProducts(nextProducts);
+          playSuccessChime();
+          showToast(`✅ Precio de "${proposal.payload.productName}" actualizado a $${proposal.payload.newPriceUSD.toFixed(2)}.`);
+        } else if (proposal.type === 'update_product_stock') {
+          const nextProducts = products.map((p) =>
+            p.id === proposal.payload.productId ? { ...p, stock: proposal.payload.newStock } : p
+          );
+          handleUpdateProducts(nextProducts);
+          playSuccessChime();
+          showToast(`✅ Stock de "${proposal.payload.productName}" fijado en ${proposal.payload.newStock}.`);
+        } else if (proposal.type === 'add_expense') {
+          handleAddExpense(proposal.payload);
+          playSuccessChime();
+        } else if (proposal.type === 'register_abono_fiado') {
+          let remainingAbono = proposal.payload.amountUSD;
+          const nextTickets = tickets.map((t) => {
+            if (remainingAbono <= 0) return t;
+            const isTarget =
+              t.customerName?.toLowerCase().includes(proposal.payload.debtorName.toLowerCase()) ||
+              t.customerCedula === proposal.payload.debtorCedula;
+            if (isTarget && t.status === 'fiado' && (t.pendingUSD || 0) > 0) {
+              const currentPending = t.pendingUSD || t.totalUSD;
+              const abonoThis = Math.min(currentPending, remainingAbono);
+              remainingAbono -= abonoThis;
+              const newPending = currentPending - abonoThis;
+              return {
+                ...t,
+                pendingUSD: newPending,
+                status: newPending <= 0.001 ? ('paid' as const) : ('fiado' as const),
+              };
+            }
+            return t;
+          });
+          handleUpdateTickets(nextTickets);
+          playSuccessChime();
+          showToast(`✅ Abono de $${proposal.payload.amountUSD.toFixed(2)} registrado para ${proposal.payload.debtorName}.`);
+        } else if (proposal.type === 'register_merma') {
+          const targetProd = products.find((p) => p.id === proposal.payload.productId);
+          if (targetProd) {
+            const nextProducts = products.map((p) =>
+              p.id === targetProd.id ? { ...p, stock: Math.max(0, p.stock - proposal.payload.quantity) } : p
+            );
+            handleUpdateProducts(nextProducts);
+            const newMerma: MermaRecord = {
+              id: `MERMA-${Date.now()}`,
+              productId: targetProd.id,
+              productName: targetProd.name,
+              category: targetProd.category,
+              unit: targetProd.unit,
+              quantity: proposal.payload.quantity,
+              unitCostUSD: targetProd.costUSD || targetProd.priceUSD * 0.72,
+              totalCostUSD: proposal.payload.lossUSD,
+              totalCostVES: proposal.payload.lossUSD * (settings.bcvRate || 1),
+              bcvRate: settings.bcvRate || 1,
+              reason: 'Daño / Vencimiento',
+              location: 'Mostrador / Exhibidor',
+              notes: proposal.payload.reason || 'Merma asentada por IA',
+              date: new Date().toISOString(),
+              performedBy: 'Copiloto IA (Control Total)',
+            };
+            handleUpdateMermas([newMerma, ...mermas]);
+            playSuccessChime();
+            showToast(`✅ Merma de ${proposal.payload.quantity} ${targetProd.unit} registrada.`);
+          }
+        } else if (proposal.type === 'execute_cierre_z') {
+          setActiveTab('tickets');
+          playSuccessChime();
+          showToast(`🧾 Navegando a Cierre de Caja y Reportes Z.`);
+        } else if (proposal.type === 'open_backup') {
+          setIsGoogleBackupModalOpen(true);
+          playSuccessChime();
+        } else if (proposal.type === 'update_reminder_template') {
+          handleSaveSettings({
+            ...settings,
+            customReminderTemplate: proposal.payload.newTemplate,
+            reminderTone: proposal.payload.tone || settings.reminderTone,
+          });
+          playSuccessChime();
+          showToast(`✅ Plantilla de recordatorio de cobranza actualizada.`);
+        } else if (proposal.type === 'update_thank_you_template') {
+          handleSaveSettings({
+            ...settings,
+            customThankYouTemplate: proposal.payload.newTemplate,
+            thankYouTone: proposal.payload.tone || settings.thankYouTone,
+          });
+          playSuccessChime();
+          showToast(`✅ Plantilla de agradecimiento actualizada.`);
+        } else if (proposal.type === 'save_promotion') {
+          const promo = proposal.payload.promotion;
+          const currentPromos = settings.promotions || [];
+          const existsIndex = currentPromos.findIndex((p) => p.id === promo.id || p.title === promo.title);
+          const updatedPromos = existsIndex >= 0
+            ? currentPromos.map((p, idx) => (idx === existsIndex ? promo : p))
+            : [promo, ...currentPromos];
+          handleSaveSettings({ ...settings, promotions: updatedPromos });
+          playSuccessChime();
+          showToast(`📢 Promoción "${promo.title}" guardada.`);
+        } else if (proposal.type === 'share_promotion') {
+          const textToShare = proposal.payload.bodyWhatsApp;
+          navigator.clipboard?.writeText(textToShare);
+          const link = document.createElement('a');
+          link.href = `https://wa.me/?text=${encodeURIComponent(textToShare)}`;
+          link.target = '_blank';
+          link.rel = 'noopener noreferrer';
+          link.click();
+          playSuccessChime();
+          showToast(`📲 Transmitiendo promoción por WhatsApp...`);
+        } else if (proposal.type === 'open_reminder') {
+          if (proposal.payload.url) {
+            const link = document.createElement('a');
+            link.href = proposal.payload.url;
+            link.target = '_blank';
+            link.rel = 'noopener noreferrer';
+            link.click();
+            playSuccessChime();
+            showToast(`📲 Abriendo WhatsApp para ${proposal.payload.debtorName || 'el cliente'}...`);
+          }
+        } else if (proposal.type === 'navigate_tab') {
+          setActiveTab(proposal.payload.tab);
+          playSuccessChime();
+        }
+      } catch (err: any) {
+        showToast(`❌ Error: ${err.message || 'Error al ejecutar acción'}`);
+      }
+    },
+    [
+      products,
+      tickets,
+      mermas,
+      settings,
+      handleUpdateBcvRate,
+      handleUpdatePreferentialRate,
+      handleSaveSettings,
+      handleUpdateProducts,
+      handleAddExpense,
+      handleUpdateTickets,
+      handleUpdateMermas,
+    ]
+  );
+
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col selection:bg-rose-500 selection:text-white">
       {/* Toast Notification */}
@@ -497,6 +677,19 @@ export default function App() {
             onUpdateBcvRate={handleUpdateBcvRate}
             onUpdatePreferentialRate={handleUpdatePreferentialRate}
             onUpdateProducts={handleUpdateProducts}
+            onUpdateTickets={handleUpdateTickets}
+            onAddExpense={handleAddExpense}
+            onDeleteExpense={handleDeleteExpense}
+            onUpdateExpenses={(newExpenses) => {
+              setExpenses(newExpenses);
+              saveExpenses(newExpenses);
+            }}
+            onUpdateMermas={handleUpdateMermas}
+            onUpdateRestocks={handleUpdateRestocks}
+            onOpenBackupModal={() => setIsGoogleBackupModalOpen(true)}
+            onOpenMermaModal={handleOpenMermaModal}
+            onClaimFidelisReward={handleClaimFidelisReward}
+            onSaveSettings={handleSaveSettings}
             onShowToast={showToast}
             onNavigateToTab={(tab) => {
               if (['pos', 'tickets', 'fiados', 'restocks', 'inventory', 'settings', 'ai'].includes(tab)) {
@@ -563,6 +756,25 @@ export default function App() {
           setFidelisProfiles(loadFidelisProfiles());
           showToast(msg);
         }}
+      />
+
+      {/* Omnipresent Floating Global AI Copilot (Total Control from ANY screen) */}
+      <GlobalAICopilot
+        products={products}
+        tickets={tickets}
+        debtors={debtorsSummary}
+        restocks={restocks}
+        expenses={expenses}
+        mermas={mermas}
+        settings={settings}
+        onExecuteAction={handleExecuteAIAction}
+        onNavigateToTab={(tab) => {
+          if (['pos', 'tickets', 'fiados', 'restocks', 'inventory', 'settings', 'ai'].includes(tab)) {
+            setActiveTab(tab as any);
+          }
+        }}
+        onShowToast={showToast}
+        onSaveSettings={handleSaveSettings}
       />
 
       {/* Footer info */}
